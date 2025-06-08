@@ -1,0 +1,106 @@
+[project]
+name = "wwdcdigest"
+version = "0.1.0"
+description = "Tools for creating digests from Apple WWDC sessions"
+readme = "README.md"
+requires-python = ">=3.13,<3.14"
+license = { text = "MIT" }
+authors = [{ name = "tattn", email = "tattn@example.com" }]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.13",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+]
+keywords = ["apple", "wwdc", "digest", "summary"]
+dependencies = [
+    "httpx>=0.25.0",
+    "beautifulsoup4>=4.12.0",
+    "pydantic>=2.0.0",
+    "rich>=13.0.0",
+    "click>=8.1.0",
+    "html5lib>=1.1",
+    "opencv-python>=4.9.0",
+    "webvtt-py>=0.4.6",
+    "wwdctools @ git+https://github.com/tattn/wwdctools.git",
+    "openai>=1.84.0",
+]
+
+[project.urls]
+"Homepage" = "https://github.com/tattn/wwdcdigest"
+"Bug Tracker" = "https://github.com/tattn/wwdcdigest/issues"
+
+[project.optional-dependencies]
+cli = []
+
+dev = [
+    "pytest>=8.4.0",
+    "pytest-asyncio>=1.0.0",
+    "anyio>=4.9.0",
+    "ruff>=0.11.13",
+    "pyright>=1.1.401",
+    "trio>=0.30.0",
+    "pre-commit>=3.3.3",
+]
+
+[tool.uv]
+package = true
+
+[tool.ruff]
+target-version = "py313"
+line-length = 88
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes
+    "I",   # isort
+    "N",   # pep8-naming
+    "UP",  # pyupgrade
+    "ANN", # flake8-annotations
+    "B",   # flake8-bugbear
+    "C4",  # flake8-comprehensions
+    "DTZ", # flake8-datetimez
+    "T20", # flake8-print
+    "PT",  # flake8-pytest-style
+    "RET", # flake8-return
+    "SIM", # flake8-simplify
+    "ARG", # flake8-unused-arguments
+    "ERA", # eradicate
+    "PL",  # pylint
+    "RUF", # ruff-specific rules
+]
+ignore = []
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*" = ["ANN", "S101", "E501", "PLR2004"]
+
+[tool.pyright]
+include = ["src"]
+exclude = ["**/__pycache__", "**/.venv"]
+pythonVersion = "3.13"
+typeCheckingMode = "strict"
+reportMissingTypeStubs = false
+reportUnknownMemberType = false
+reportUnknownArgumentType = false
+reportUnknownVariableType = false
+reportPrivateUsage = false
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = "test_*.py"
+python_functions = "test_*"
+markers = ["anyio: tests that use anyio"]
+
+[dependency-groups]
+dev = [
+    "anyio>=4.9.0",
+    "pyright>=1.1.401",
+    "pytest-anyio>=0.0.0",
+    "ruff>=0.11.13",
+    "trio>=0.30.0",
+]
+
+[project.scripts]
+wwdcdigest = "wwdcdigest.cli:main"
