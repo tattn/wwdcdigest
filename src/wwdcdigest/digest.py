@@ -281,21 +281,44 @@ async def _download_and_extract_frames(
             session_data, session_dir, "hd"
         )
 
-        # Fix nested sample_code path if it exists
-        if "sample_code" in temp_download_paths:
-            nested_path = temp_download_paths["sample_code"]
-            if os.path.dirname(nested_path).endswith(
-                f"wwdc_{session_data.year}_{session_id}"
-            ):
-                correct_path = os.path.join(session_dir, "sample_code.txt")
-                if nested_path != correct_path and os.path.exists(nested_path):
-                    # Copy content instead of moving to avoid issues with
-                    # nested directories
-                    with open(nested_path, encoding="utf-8") as src_file:
-                        content = src_file.read()
-                    with open(correct_path, "w", encoding="utf-8") as dst_file:
-                        dst_file.write(content)
-                    temp_download_paths["sample_code"] = correct_path
+        # Fix nested directory structure if it exists
+        nested_dir_path = os.path.join(
+            session_dir, f"wwdc_{session_data.year}_{session_id}"
+        )
+        if os.path.exists(nested_dir_path) and os.path.isdir(nested_dir_path):
+            logger.info(f"Fixing nested directory structure: {nested_dir_path}")
+
+            # Move all files from nested directory to parent
+            for filename in os.listdir(nested_dir_path):
+                source_path = os.path.join(nested_dir_path, filename)
+                target_path = os.path.join(session_dir, filename)
+
+                # Skip if the file already exists in the target location
+                if os.path.exists(target_path):
+                    logger.debug(
+                        f"File already exists in parent directory: {target_path}"
+                    )
+                    os.remove(source_path)
+                    continue
+
+                # Move the file
+                logger.debug(f"Moving {source_path} to {target_path}")
+                os.rename(source_path, target_path)
+
+                # Update path in temp_download_paths if it matches
+                for key, path in temp_download_paths.items():
+                    if path == source_path:
+                        temp_download_paths[key] = target_path
+                        logger.debug(f"Updated path for {key}: {target_path}")
+
+            # Remove the nested directory if it's now empty
+            if not os.listdir(nested_dir_path):
+                logger.info(f"Removing empty nested directory: {nested_dir_path}")
+                os.rmdir(nested_dir_path)
+            else:
+                logger.warning(
+                    f"Nested directory not empty after processing: {nested_dir_path}"
+                )
 
         download_paths = await _organize_downloaded_content(
             temp_download_paths,
