@@ -14,10 +14,8 @@ from wwdctools.downloader import download_session_content
 from wwdctools.models import WWDCSession
 from wwdctools.session import fetch_session_data
 
-from .markdown_utils import create_markdown
+from .factory import DigestComponentFactory
 from .models import OpenAIConfig, WWDCDigest, WWDCFrameSegment
-from .openai_utils import generate_summary_and_key_points, translate_text
-from .video import extract_frames_from_video
 
 logger = logging.getLogger("wwdcdigest")
 
@@ -330,10 +328,12 @@ async def _download_and_extract_frames(
         logger.error("Video or WebVTT files not available")
         raise ValueError("Video or WebVTT files not available for this session")
 
-    # Extract frames
-    segments = extract_frames_from_video(
+    # Extract frames using the VideoProcessor abstraction
+    video_processor = DigestComponentFactory.create_video_processor()
+    segments = await video_processor.extract_frames(
         download_paths["video"], download_paths["webvtt"], frames_dir, image_format
     )
+    logger.info(f"Extracted {len(segments)} frames from video")
 
     return download_paths, segments
 
@@ -372,11 +372,9 @@ async def _generate_summary_and_key_points(
         # If we reach here, we need to generate summary with OpenAI
         logger.info("Generating summary and key points with OpenAI")
         try:
-            summary, key_points = await generate_summary_and_key_points(
-                transcript_text,
-                session_title,
-                config,
-                language,
+            summarizer = DigestComponentFactory.create_summarizer(config)
+            summary, key_points = await summarizer.generate_summary(
+                transcript_text, session_title, language
             )
         except Exception as e:
             logger.error(f"Error generating summary with OpenAI: {e}")
@@ -392,43 +390,36 @@ async def _translate_content_if_needed(
     language: str,
     config: OpenAIConfig | None,
     segments: list[WWDCFrameSegment],
-) -> list[WWDCFrameSegment]:
-    """Translate segments to the target language if needed.
+    summary: str,
+    key_points: list[str],
+) -> tuple[str, list[str], list[WWDCFrameSegment]]:
+    """Translate content if needed.
 
     Args:
-        language: Target language code
+        language: Language code for the output
         config: OpenAI API configuration
         segments: List of WWDCFrameSegment objects
+        summary: Summary text
+        key_points: List of key points
 
     Returns:
-        List of WWDCFrameSegment objects with translated text if needed
+        Tuple of (translated_summary, translated_key_points, translated_segments)
     """
+    # If language is English or no OpenAI config, return as is
     if language == "en" or not config:
-        return segments
+        return summary, key_points, segments
 
+    # Translate content using OpenAI
     logger.info(f"Translating content to {language}")
-    translated_segments = []
-
-    for segment in segments:
-        try:
-            translated_text = await translate_text(
-                segment.text,
-                language,
-                config,
-            )
-            translated_segments.append(
-                WWDCFrameSegment(
-                    timestamp=segment.timestamp,
-                    text=translated_text,
-                    image_path=segment.image_path,
-                )
-            )
-        except Exception as e:
-            logger.error(f"Error translating segment: {e}")
-            # Keep original text if translation fails
-            translated_segments.append(segment)
-
-    return translated_segments
+    try:
+        translator = DigestComponentFactory.create_translator(config)
+        translated_summary, translated_key_points, translated_segments = (
+            await translator.translate(summary, key_points, segments, language)
+        )
+        return translated_summary, translated_key_points, translated_segments
+    except Exception as e:
+        logger.error(f"Error translating content: {e}")
+        return summary, key_points, segments
 
 
 async def create_digest_from_url(
@@ -476,7 +467,9 @@ async def create_digest_from_url(
     )
 
     # Translate content if needed
-    segments = await _translate_content_if_needed(language, openai_config, segments)
+    summary, key_points, segments = await _translate_content_if_needed(
+        language, openai_config, segments, summary, key_points
+    )
 
     # Create markdown file path with title as filename
     title_for_filename = (
@@ -496,8 +489,12 @@ async def create_digest_from_url(
         source_url=url,
     )
 
-    # Create markdown
-    create_markdown(digest, markdown_path)
+    # Format the digest using the DigestFormatter abstraction
+    formatter = DigestComponentFactory.create_formatter("markdown")
+    markdown_path = formatter.format_digest(digest, markdown_path)
+
+    # Update the markdown path in the digest object
+    digest.markdown_path = markdown_path
 
     return digest
 
