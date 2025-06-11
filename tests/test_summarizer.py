@@ -46,9 +46,7 @@ async def test_openai_summarizer():
         )
 
         # Check that the mock was called with the right arguments
-        mock_generate.assert_called_once_with(
-            transcript, session_title, config, "en"
-        )
+        mock_generate.assert_called_once_with(transcript, session_title, config, "en")
 
         # Check the results
         assert summary == "Test summary from OpenAI"

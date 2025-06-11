@@ -49,11 +49,11 @@ async def test_openai_translator():
         mock_translate.side_effect = translate_side_effect
 
         # Call the translate method
-        translated_summary, translated_key_points, translated_segments = (
-            await translator.translate(
-                summary, key_points, segments, target_language
-            )
-        )
+        (
+            translated_summary,
+            translated_key_points,
+            translated_segments,
+        ) = await translator.translate(summary, key_points, segments, target_language)
 
         # Check the number of calls
         assert mock_translate.call_count == 1 + len(key_points) + len(segments)

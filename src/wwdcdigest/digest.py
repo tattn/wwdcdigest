@@ -413,9 +413,11 @@ async def _translate_content_if_needed(
     logger.info(f"Translating content to {language}")
     try:
         translator = DigestComponentFactory.create_translator(config)
-        translated_summary, translated_key_points, translated_segments = (
-            await translator.translate(summary, key_points, segments, language)
-        )
+        (
+            translated_summary,
+            translated_key_points,
+            translated_segments,
+        ) = await translator.translate(summary, key_points, segments, language)
         return translated_summary, translated_key_points, translated_segments
     except Exception as e:
         logger.error(f"Error translating content: {e}")
