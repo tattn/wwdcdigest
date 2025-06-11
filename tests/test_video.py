@@ -3,6 +3,7 @@
 import os
 import tempfile
 from pathlib import Path
+from typing import Literal
 from unittest.mock import MagicMock, patch
 
 import cv2
@@ -13,6 +14,7 @@ from wwdcdigest.video import (
     SIMILARITY_THRESHOLD,
     _prepare_subtitle_path,
     compare_images,
+    delete_unused_image_files,
     extract_frames_from_video,
     parse_webvtt_time,
 )
@@ -33,9 +35,6 @@ async def test_compare_images():
     """Test image comparison."""
     with tempfile.TemporaryDirectory() as temp_dir:
         # Create two test images (black squares)
-        import cv2
-        import numpy as np
-
         # Create identical images
         img1 = np.zeros((100, 100, 3), dtype=np.uint8)
         img2 = np.zeros((100, 100, 3), dtype=np.uint8)
@@ -91,6 +90,7 @@ async def test_extract_frames_merges_similar_frames():
             (True, frame1),
             (True, frame2),  # Similar to frame1, should be merged
             (True, frame3),  # Different, should be a new segment
+            (False, None),  # End of video
         ]
 
         # Mock WebVTT data
@@ -106,11 +106,20 @@ async def test_extract_frames_merges_similar_frames():
         mock_vtt = MagicMock()
         mock_vtt.__iter__.return_value = mock_captions
 
+        # Create a mock for _save_frame_image that does nothing
+        def mock_save_frame(
+            frame: np.ndarray, path: str, fmt: Literal["jpg", "png", "avif", "webp"]
+        ) -> None:
+            pass
+
         # Patch dependencies
         with (
             patch("wwdcdigest.video.cv2.VideoCapture", return_value=mock_video),
             patch("wwdcdigest.video.webvtt.read", return_value=mock_vtt),
             patch("wwdcdigest.video.compare_images") as mock_compare,
+            patch("wwdcdigest.video._save_frame_image", side_effect=mock_save_frame),
+            # Add a patch for vtt.captions to ensure it's properly accessible
+            patch.object(mock_vtt, "captions", mock_captions),
         ):
             # Set up compare_images to return high similarity for the first two frames
             # and low similarity for the third
@@ -158,3 +167,99 @@ async def test_prepare_subtitle_path():
             content = f.read()
             assert "Part 1" in content
             assert "Part 2" in content
+
+
+@pytest.mark.anyio
+async def test_delete_unused_image_files():
+    """Test deleting unused image files."""
+    with tempfile.TemporaryDirectory() as temp_dir:
+        # Create test image files
+        test_files = []
+        for i in range(3):
+            file_path = os.path.join(temp_dir, f"test_image_{i}.jpg")
+            # Create an empty file
+            with open(file_path, "w") as f:
+                f.write("")
+            test_files.append(file_path)
+
+        # Make sure files exist
+        for file_path in test_files:
+            assert os.path.exists(file_path)
+
+        # Delete the files
+        delete_unused_image_files(test_files)
+
+        # Verify files are deleted
+        for file_path in test_files:
+            assert not os.path.exists(file_path)
+
+        # Test with non-existent files (should not raise exception)
+        non_existent_file = os.path.join(temp_dir, "non_existent.jpg")
+        delete_unused_image_files([non_existent_file])
+
+
+@pytest.mark.anyio
+async def test_image_format_options():
+    """Test that different image formats are supported."""
+    with tempfile.TemporaryDirectory() as temp_dir:
+        # Mock video and subtitle data
+        video_path = "mock_video.mp4"
+        subtitle_path = "mock_subtitle.vtt"
+        output_dir = temp_dir
+
+        # Create a test frame
+        frame = np.zeros((100, 100, 3), dtype=np.uint8)
+
+        # Test different image formats
+        formats: list[Literal["jpg", "png", "avif", "webp"]] = [
+            "jpg",
+            "png",
+            "avif",
+            "webp",
+        ]
+
+        for fmt in formats:
+            # Create a mock for cv2.VideoCapture for each format
+            mock_video = MagicMock()
+            mock_video.isOpened.return_value = True
+            mock_video.get.return_value = 30.0  # fps
+
+            # Set up read to return our frame and then False for end of video
+            mock_video.read.side_effect = [(True, frame), (False, None)]
+
+            # Mock WebVTT data
+            mock_caption = MagicMock(start="00:00:10.000", text="Test Caption")
+            mock_vtt = MagicMock()
+            mock_vtt.__iter__.return_value = [mock_caption]
+
+            # Create a mock for _save_frame_image that does nothing
+            def mock_save_frame(
+                frame: np.ndarray, path: str, fmt: Literal["jpg", "png", "avif", "webp"]
+            ) -> None:
+                pass
+
+            # Patch dependencies
+            with (
+                patch("wwdcdigest.video.cv2.VideoCapture", return_value=mock_video),
+                patch("wwdcdigest.video.webvtt.read", return_value=mock_vtt),
+                patch("wwdcdigest.video.compare_images", return_value=0.5),
+                patch(
+                    "wwdcdigest.video._save_frame_image", side_effect=mock_save_frame
+                ) as mock_save,
+                # Add a patch for vtt.captions to ensure it's properly accessible
+                patch.object(mock_vtt, "captions", [mock_caption]),
+            ):
+                # Call the function with the current format
+                segments = extract_frames_from_video(
+                    video_path, subtitle_path, output_dir, fmt
+                )
+
+                # Check that the save function was called with the right format
+                mock_save.assert_called_with(
+                    frame, os.path.join(output_dir, f"frame_0000.{fmt}"), fmt
+                )
+
+                # Check that we got the segment
+                assert len(segments) == 1
+                assert segments[0].text == "Test Caption"
+                assert segments[0].image_path.endswith(f".{fmt}")

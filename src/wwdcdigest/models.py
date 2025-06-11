@@ -35,6 +35,7 @@ class WWDCDigest(BaseModel):
     segments: list[WWDCFrameSegment] = []
     markdown_path: str = ""
     language: str = "en"
+    source_url: str = ""
 
     def __str__(self) -> str:
         """Return a string representation of the digest."""

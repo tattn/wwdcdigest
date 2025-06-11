@@ -28,6 +28,9 @@ uv add wwdcdigest
 # Create a digest from a URL
 wwdcdigest digest https://developer.apple.com/videos/play/wwdc2023/10149/
 
+# Create a digest from a localized URL (e.g., Japanese)
+wwdcdigest digest https://developer.apple.com/jp/videos/play/wwdc2025/102/
+
 # Specify output directory
 wwdcdigest digest https://developer.apple.com/videos/play/wwdc2023/10149/ --output-dir ~/Documents/wwdc_digests
 
@@ -63,12 +66,18 @@ These options can be used with any command:
 ```python
 import asyncio
 from wwdcdigest import create_digest
+from wwdcdigest.models import OpenAIConfig
 
 async def main():
     # Create a digest from a URL
     url = "https://developer.apple.com/videos/play/wwdc2023/10149/"
     digest = await create_digest(url)
     print(f"Digest created at: {digest.markdown_path}")
+
+    # Create a digest from a localized URL (e.g., Japanese)
+    jp_url = "https://developer.apple.com/jp/videos/play/wwdc2025/102/"
+    jp_digest = await create_digest(jp_url)
+    print(f"Japanese session digest created at: {jp_digest.markdown_path}")
 
     # Create a digest with custom output directory
     url = "https://developer.apple.com/videos/play/wwdc2023/10149/"
@@ -77,13 +86,15 @@ async def main():
 
     # Generate summary and key points with OpenAI
     url = "https://developer.apple.com/videos/play/wwdc2023/10149/"
-    digest = await create_digest(url, openai_key="YOUR_API_KEY")
+    openai_config = OpenAIConfig(api_key="YOUR_API_KEY")
+    digest = await create_digest(url, openai_config=openai_config)
     print(f"Summary: {digest.summary}")
     print(f"Key points: {digest.key_points}")
 
     # Create digest in Japanese (requires OpenAI)
     url = "https://developer.apple.com/videos/play/wwdc2023/10149/"
-    digest = await create_digest(url, openai_key="YOUR_API_KEY", language="ja")
+    openai_config = OpenAIConfig(api_key="YOUR_API_KEY")
+    digest = await create_digest(url, openai_config=openai_config, language="ja")
     print(f"Japanese summary: {digest.summary}")
 
 asyncio.run(main())

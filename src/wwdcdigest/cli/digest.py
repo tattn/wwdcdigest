@@ -4,18 +4,17 @@ import asyncio
 import logging
 import os
 import sys
+from typing import Literal, cast
 
 import click
 
 from wwdcdigest.digest import create_digest
 
-from .utils import validate_session_id_or_url
-
 logger = logging.getLogger("wwdcdigest")
 
 
 @click.command("digest")
-@click.argument("url", callback=validate_session_id_or_url, required=True)
+@click.argument("url", required=True)
 @click.option(
     "--output-dir",
     "-o",
@@ -53,6 +52,13 @@ logger = logging.getLogger("wwdcdigest")
         "Non-English requires OpenAI."
     ),
 )
+@click.option(
+    "--image-format",
+    "-i",
+    type=click.Choice(["jpg", "png", "avif", "webp"]),
+    default="jpg",
+    help="Format for extracted images (jpg, png, avif, webp)",
+)
 def digest_command(  # noqa: PLR0913
     url: str,
     output_dir: str | None,
@@ -60,23 +66,32 @@ def digest_command(  # noqa: PLR0913
     openai_key: str | None,
     openai_endpoint: str | None,
     language: str,
+    image_format: str,
 ) -> None:
     """Create a digest from a WWDC session.
 
-    URL must be a full URL from developer.apple.com
-    (e.g., 'https://developer.apple.com/videos/play/wwdc2023/110173/')
+    URL should be a WWDC session URL
+    (e.g., 'https://developer.apple.com/videos/play/wwdc2023/110173/'
+    or 'https://developer.apple.com/jp/videos/play/wwdc2023/110173/')
     """
     try:
         if output_format != "markdown":
             raise ValueError("Currently, only 'markdown' format is supported.")
 
+        # Create OpenAIConfig object if API key is provided
+        openai_config = None
+        if openai_key:
+            from wwdcdigest.models import OpenAIConfig
+
+            openai_config = OpenAIConfig(api_key=openai_key, endpoint=openai_endpoint)
+
         digest = asyncio.run(
             create_digest(
                 url=url,
                 output_dir=output_dir,
-                openai_key=openai_key,
-                openai_endpoint=openai_endpoint,
+                openai_config=openai_config,
                 language=language,
+                image_format=cast(Literal["jpg", "png", "avif", "webp"], image_format),
             )
         )
         logger.info(f"Successfully created digest for session {digest.session_id}")

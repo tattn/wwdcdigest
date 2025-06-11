@@ -1,6 +1,8 @@
 """Functions for interacting with OpenAI's API."""
 
 import logging
+import re
+from collections.abc import Callable
 
 from openai import APIError, AsyncOpenAI, RateLimitError
 
@@ -13,6 +15,72 @@ class OpenAIError(Exception):
     """Base class for OpenAI-related errors."""
 
     pass
+
+
+def is_likely_in_language(text: str, target_language: str) -> bool:
+    """Check if text is likely already in the target language.
+
+    Args:
+        text: The text to check
+        target_language: The target language code (e.g., "ja", "fr", "es")
+
+    Returns:
+        True if the text is likely already in the target language
+    """
+    # Skip empty text
+    min_text_length = 5
+    if not text or len(text.strip()) < min_text_length:
+        return False
+
+    # Language-specific patterns
+    language_patterns: dict[str, Callable[[str], bool]] = {
+        "ja": lambda t: bool(
+            re.search(r"[\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FFF]", t)
+        ),
+        "zh": lambda t: bool(re.search(r"[\u4E00-\u9FFF\u3400-\u4DBF]", t)),
+        "ko": lambda t: bool(re.search(r"[\uAC00-\uD7AF\u1100-\u11FF]", t)),
+        "ru": lambda t: bool(re.search(r"[\u0400-\u04FF]", t)),
+        "th": lambda t: bool(re.search(r"[\u0E00-\u0E7F]", t)),
+        # For languages using Latin script, it's harder to detect reliably without NLP
+        # These are approximate heuristics based on common letter combinations
+        "fr": lambda t: bool(
+            re.search(r"\b(est|sont|cette|avec|dans|pour|vous|nous)\b", t)
+        ),
+        "es": lambda t: bool(
+            re.search(r"\b(esta|son|con|para|como|los|las|una|el|la)\b", t)
+        ),
+        "de": lambda t: bool(
+            re.search(r"\b(ist|sind|das|mit|für|und|oder|auch|ein|eine)\b", t)
+        ),
+        "it": lambda t: bool(
+            re.search(r"\b(sono|questo|con|per|come|un|una|il|la|gli)\b", t)
+        ),
+        "pt": lambda t: bool(
+            re.search(r"\b(são|este|com|para|como|um|uma|o|a|os|as)\b", t)
+        ),
+    }
+
+    # For English, check if text lacks non-Latin characters and has English patterns
+    if target_language == "en":
+        # If text contains significant non-Latin characters, it's likely not English
+        has_non_latin = bool(
+            re.search(
+                r"[\u0400-\u04FF\u0E00-\u0E7F\u3040-\u30FF\u4E00-\u9FFF\uAC00-\uD7AF]",
+                text,
+            )
+        )
+        has_english_patterns = bool(
+            re.search(r"\b(the|this|that|with|for|is|are|and|or)\b", text)
+        )
+        return not has_non_latin and has_english_patterns
+
+    # For other languages, check using language-specific patterns
+    checker = language_patterns.get(target_language)
+    if checker:
+        return checker(text)
+
+    # Default: assume text needs translation (safer)
+    return False
 
 
 async def translate_text(
@@ -33,6 +101,13 @@ async def translate_text(
     Raises:
         OpenAIError: If there's an error calling the OpenAI API
     """
+    # Skip translation if text is already in the target language
+    if is_likely_in_language(text, target_language):
+        logger.info(
+            f"Text appears to already be in {target_language}, skipping translation"
+        )
+        return text
+
     logger.info(f"Translating text to {target_language}")
 
     try:

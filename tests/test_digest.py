@@ -3,7 +3,7 @@
 import pytest
 
 from wwdcdigest.digest import create_digest
-from wwdcdigest.models import WWDCDigest
+from wwdcdigest.models import OpenAIConfig, WWDCDigest
 
 
 @pytest.mark.anyio
@@ -15,6 +15,7 @@ async def test_wwdc_digest_model():
         title="Test Session",
         summary="This is a test summary",
         key_points=["Point 1", "Point 2", "Point 3"],
+        source_url="https://developer.apple.com/videos/play/wwdc2023/110173/",
     )
 
     # Check that the model is created correctly
@@ -52,7 +53,8 @@ async def test_create_digest():
 async def test_create_digest_with_openai():
     """Test creating a digest from a session URL with OpenAI key."""
     url = "https://developer.apple.com/videos/play/wwdc2023/10149/"
-    digest = await create_digest(url, openai_key="test_key")
+    openai_config = OpenAIConfig(api_key="test_key")
+    digest = await create_digest(url, openai_config=openai_config)
     assert digest.session_id is not None
     assert digest.title is not None
     assert digest.summary is not None

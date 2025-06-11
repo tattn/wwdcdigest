@@ -24,6 +24,8 @@ dependencies = [
     "webvtt-py>=0.4.6",
     "wwdctools @ git+https://github.com/tattn/wwdctools.git",
     "openai>=1.84.0",
+    "pillow>=10.0.0",
+    "pillow-avif-plugin>=1.5.2",
 ]
 
 [project.urls]

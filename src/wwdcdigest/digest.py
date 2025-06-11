@@ -8,6 +8,7 @@ Environment variables:
 import logging
 import os
 import tempfile
+from typing import Literal
 
 from wwdctools.downloader import download_session_content
 from wwdctools.models import WWDCSession
@@ -54,15 +55,13 @@ async def _get_transcript_from_session(
 
 
 def _validate_openai_settings(
-    openai_key: str | None,
-    openai_endpoint: str | None,
+    config: OpenAIConfig | None,
     language: str,
 ) -> OpenAIConfig | None:
     """Validate and retrieve OpenAI API settings.
 
     Args:
-        openai_key: OpenAI API key (if provided)
-        openai_endpoint: OpenAI API endpoint URL (if provided)
+        config: OpenAI configuration (if provided)
         language: Language code for the digest
 
     Returns:
@@ -71,31 +70,39 @@ def _validate_openai_settings(
     Raises:
         ValueError: If non-English language is requested but no OpenAI key is available
     """
+    api_key = None
+    endpoint = None
+
+    # If config is provided, use it
+    if config:
+        api_key = config.api_key
+        endpoint = config.endpoint
+
     # Check for OpenAI API key in environment if not provided
-    if not openai_key:
-        openai_key = os.environ.get("OPENAI_API_KEY")
-        if openai_key:
+    if not api_key:
+        api_key = os.environ.get("OPENAI_API_KEY")
+        if api_key:
             logger.debug("Using OpenAI API key from environment")
 
     # Check for OpenAI API endpoint in environment if not provided
-    if not openai_endpoint:
-        openai_endpoint = os.environ.get("OPENAI_API_ENDPOINT")
-        if openai_endpoint:
+    if not endpoint:
+        endpoint = os.environ.get("OPENAI_API_ENDPOINT")
+        if endpoint:
             logger.debug("Using OpenAI API endpoint from environment")
 
     # Check if translation is needed but no OpenAI key is available
-    if language != "en" and not openai_key:
+    if language != "en" and not api_key:
         raise ValueError(
             "OpenAI API key is required for non-English languages. "
-            "Please provide --openai-key or set OPENAI_API_KEY environment variable."
+            "Please provide OpenAI configuration or set OPENAI_API_KEY env variable."
         )
 
     # Return None if no OpenAI key is available
-    if not openai_key:
+    if not api_key:
         return None
 
     # Create and return OpenAIConfig object
-    return OpenAIConfig(api_key=openai_key, endpoint=openai_endpoint)
+    return OpenAIConfig(api_key=api_key, endpoint=endpoint)
 
 
 def _setup_output_directory(
@@ -243,7 +250,10 @@ async def _check_existing_content(
 
 
 async def _download_and_extract_frames(
-    session_data: WWDCSession, session_dir: str, frames_dir: str
+    session_data: WWDCSession,
+    session_dir: str,
+    frames_dir: str,
+    image_format: Literal["jpg", "png", "avif", "webp"] = "jpg",
 ) -> tuple[dict[str, str], list[WWDCFrameSegment]]:
     """Download session content and extract frames.
 
@@ -251,6 +261,7 @@ async def _download_and_extract_frames(
         session_data: Session data
         session_dir: Directory for session files
         frames_dir: Directory for extracted frames
+        image_format: Format to save the image files (jpg, png, avif, webp)
 
     Returns:
         Tuple of (download_paths, segments)
@@ -298,7 +309,7 @@ async def _download_and_extract_frames(
 
     # Extract frames
     segments = extract_frames_from_video(
-        download_paths["video"], download_paths["webvtt"], frames_dir
+        download_paths["video"], download_paths["webvtt"], frames_dir, image_format
     )
 
     return download_paths, segments
@@ -329,21 +340,23 @@ async def _generate_summary_and_key_points(
 
     # Generate summary and key points if OpenAI API key is provided
     if config:
-        logger.info("Generating summary and key points with OpenAI")
         transcript_text = await _get_transcript_from_session(download_paths, segments)
 
-        if transcript_text:
-            try:
-                summary, key_points = await generate_summary_and_key_points(
-                    transcript_text,
-                    session_title,
-                    config,
-                    language,
-                )
-            except Exception as e:
-                logger.error(f"Error generating summary with OpenAI: {e}")
-        else:
+        if not transcript_text:
             logger.warning("No transcript available for summary generation")
+            return summary, key_points
+
+        # If we reach here, we need to generate summary with OpenAI
+        logger.info("Generating summary and key points with OpenAI")
+        try:
+            summary, key_points = await generate_summary_and_key_points(
+                transcript_text,
+                session_title,
+                config,
+                language,
+            )
+        except Exception as e:
+            logger.error(f"Error generating summary with OpenAI: {e}")
     else:
         logger.info(
             "No OpenAI API key provided, skipping summary and key points generation"
@@ -398,26 +411,23 @@ async def _translate_content_if_needed(
 async def create_digest_from_url(
     url: str,
     output_dir: str | None = None,
-    openai_key: str | None = None,
-    openai_endpoint: str | None = None,
+    openai_config: OpenAIConfig | None = None,
     language: str = "en",
+    image_format: Literal["jpg", "png", "avif", "webp"] = "jpg",
 ) -> WWDCDigest:
     """Create a digest from a WWDC session URL.
 
     Args:
         url: URL of the WWDC session
         output_dir: Directory to save output files (defaults to temp directory)
-        openai_key: OpenAI API key to generate summary and key points (optional)
-        openai_endpoint: Custom OpenAI API endpoint URL (optional)
+        openai_config: OpenAI API configuration object
         language: Language code for the digest (defaults to English)
+        image_format: Format to save the extracted frames (defaults to jpg)
 
     Returns:
         A digest of the session
     """
     logger.info(f"Creating digest from URL: {url}")
-
-    # Validate and get OpenAI settings
-    openai_config = _validate_openai_settings(openai_key, openai_endpoint, language)
 
     # Fetch session data
     session_data = await fetch_session_data(url)
@@ -430,7 +440,7 @@ async def create_digest_from_url(
 
     # Download content and extract frames
     download_paths, segments = await _download_and_extract_frames(
-        session_data, session_dir, frames_dir
+        session_data, session_dir, frames_dir, image_format
     )
 
     # Generate summary and key points
@@ -460,6 +470,7 @@ async def create_digest_from_url(
         segments=segments,
         markdown_path=markdown_path,
         language=language,
+        source_url=url,
     )
 
     # Create markdown
@@ -471,18 +482,18 @@ async def create_digest_from_url(
 async def create_digest(
     url: str,
     output_dir: str | None = None,
-    openai_key: str | None = None,
-    openai_endpoint: str | None = None,
+    openai_config: OpenAIConfig | None = None,
     language: str = "en",
+    image_format: Literal["jpg", "png", "avif", "webp"] = "jpg",
 ) -> WWDCDigest:
     """Create a digest from a WWDC session URL.
 
     Args:
         url: URL of the WWDC session
         output_dir: Directory to save output files (defaults to temp directory)
-        openai_key: OpenAI API key to generate summary and key points (optional)
-        openai_endpoint: Custom OpenAI API endpoint URL (optional)
+        openai_config: OpenAI configuration for API access (optional)
         language: Language code for the digest (defaults to English)
+        image_format: Format to save the extracted frames (defaults to jpg)
 
     Returns:
         A digest of the session
@@ -495,6 +506,9 @@ async def create_digest(
             "URL must start with http:// or https:// and be a valid WWDC session URL"
         )
 
+    # Validate and get OpenAI settings
+    validated_config = _validate_openai_settings(openai_config, language)
+
     return await create_digest_from_url(
-        url, output_dir, openai_key, openai_endpoint, language
+        url, output_dir, validated_config, language, image_format
     )
