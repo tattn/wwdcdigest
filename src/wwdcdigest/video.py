@@ -158,14 +158,15 @@ def _process_raw_segments(
         similarity = compare_images(prev_segment.image_path, current_segment.image_path)
 
         if similarity >= SIMILARITY_THRESHOLD:
-            # Frames are similar, merge by keeping the first one and appending text
+            # Frames are similar, merge by keeping the last one and appending text
             if prev_segment.text != current_segment.text:
                 merged_segments[
                     -1
                 ].text = f"{prev_segment.text}\n{current_segment.text}"
 
-            # Add current segment's image to the list of unused files
-            unused_image_files.append(current_segment.image_path)
+            # Keep the last image and mark the previous one as unused
+            unused_image_files.append(prev_segment.image_path)
+            merged_segments[-1].image_path = current_segment.image_path
 
             logger.debug(
                 f"Merged frame {current_segment.timestamp} "
