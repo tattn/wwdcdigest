@@ -2,7 +2,6 @@
 
 import logging
 import os
-from typing import Literal
 
 import cv2
 import numpy as np
@@ -10,7 +9,7 @@ import pillow_avif  # type: ignore # noqa: F401
 import webvtt
 from PIL import Image
 
-from .models import WWDCFrameSegment
+from .models import ImageOptions, WWDCFrameSegment
 from .webvtt_utils import (
     parse_webvtt_time,
     prepare_combined_subtitle,
@@ -28,7 +27,7 @@ def extract_frames_from_video(
     video_path: str,
     subtitle_path: str,
     output_dir: str,
-    image_format: Literal["jpg", "png", "avif", "webp"] = "jpg",
+    image_options: ImageOptions,
 ) -> list[WWDCFrameSegment]:
     """Extract frames from video at subtitle timestamps.
 
@@ -36,7 +35,7 @@ def extract_frames_from_video(
         video_path: Path to the video file
         subtitle_path: Path to the WebVTT subtitle file
         output_dir: Directory to save extracted frames
-        image_format: Format to save the image files (jpg, png, avif, webp)
+        image_options: Options for image extraction and formatting
 
     Returns:
         List of WWDCFrameSegment objects with timestamp, text and image path
@@ -97,9 +96,9 @@ def extract_frames_from_video(
             success, frame = video.read()
             if success:
                 # Save frame as image with the specified format
-                image_filename = f"frame_{i:04d}.{image_format}"
+                image_filename = f"frame_{i:04d}.{image_options.format}"
                 image_path = os.path.join(output_dir, image_filename)
-                _save_frame_image(frame, image_path, image_format)
+                _save_frame_image(frame, image_path, image_options)
 
                 # Create segment
                 segment = WWDCFrameSegment(
@@ -243,22 +242,30 @@ def compare_images(img1_path: str, img2_path: str) -> float:
 def _save_frame_image(
     frame: np.ndarray,
     image_path: str,
-    image_format: Literal["jpg", "png", "avif", "webp"],
+    image_options: ImageOptions,
 ) -> None:
     """Save a video frame in the specified image format.
 
     Args:
         frame: The video frame as a numpy array (OpenCV format)
         image_path: Path where the image should be saved
-        image_format: Format to save the image (jpg, png, avif, webp)
+        image_options: Options for image extraction and formatting
     """
-    if image_format in ("avif", "webp"):
+    # Resize if image_width is specified
+    if image_options.width is not None:
+        h, w = frame.shape[:2]
+        aspect_ratio = w / h
+        new_height = int(image_options.width / aspect_ratio)
+        frame = cv2.resize(frame, (image_options.width, new_height))
+        logger.debug(f"Resized frame to {image_options.width}x{new_height}")
+
+    if image_options.format in ("avif", "webp"):
         # Convert OpenCV BGR to RGB for PIL
         rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         pil_image = Image.fromarray(rgb_frame)
-        pil_image.save(image_path, format=image_format.upper(), quality=90)
-        logger.debug(f"Saved frame as {image_format.upper()}: {image_path}")
+        pil_image.save(image_path, format=image_options.format.upper(), quality=90)
+        logger.debug(f"Saved frame as {image_options.format.upper()}: {image_path}")
     else:
         # Use OpenCV for jpg and png
         cv2.imwrite(image_path, frame)
-        logger.debug(f"Saved frame as {image_format.upper()}: {image_path}")
+        logger.debug(f"Saved frame as {image_options.format.upper()}: {image_path}")

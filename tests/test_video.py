@@ -10,6 +10,7 @@ import cv2
 import numpy as np
 import pytest
 
+from wwdcdigest.models import ImageOptions
 from wwdcdigest.video import (
     SIMILARITY_THRESHOLD,
     compare_images,
@@ -110,7 +111,7 @@ async def test_extract_frames_merges_similar_frames():
 
         # Create a mock for _save_frame_image that does nothing
         def mock_save_frame(
-            frame: np.ndarray, path: str, fmt: Literal["jpg", "png", "avif", "webp"]
+            frame: np.ndarray, path: str, image_options: "ImageOptions"
         ) -> None:
             pass
 
@@ -128,8 +129,13 @@ async def test_extract_frames_merges_similar_frames():
             # and low similarity for the third
             mock_compare.side_effect = [0.98, 0.3]
 
-            # Call the function
-            segments = extract_frames_from_video(video_path, subtitle_path, output_dir)
+            # Call the function with ImageOptions
+            from wwdcdigest.models import ImageOptions
+
+            image_options = ImageOptions(format="jpg")
+            segments = extract_frames_from_video(
+                video_path, subtitle_path, output_dir, image_options
+            )
 
             # Check that we got 2 segments (3 frames with 2 similar ones merged)
             assert len(segments) == 2
@@ -326,7 +332,7 @@ async def test_image_format_options():
 
             # Create a mock for _save_frame_image that does nothing
             def mock_save_frame(
-                frame: np.ndarray, path: str, fmt: Literal["jpg", "png", "avif", "webp"]
+                frame: np.ndarray, path: str, image_options: "ImageOptions"
             ) -> None:
                 pass
 
@@ -342,15 +348,23 @@ async def test_image_format_options():
                 # Add a patch for vtt.captions to ensure it's properly accessible
                 patch.object(mock_vtt, "captions", [mock_caption]),
             ):
-                # Call the function with the current format
+                # Call the function with the current format using ImageOptions
+                from wwdcdigest.models import ImageOptions
+
+                image_options = ImageOptions(format=fmt)
                 segments = extract_frames_from_video(
-                    video_path, subtitle_path, output_dir, fmt
+                    video_path, subtitle_path, output_dir, image_options
                 )
 
                 # Check that the save function was called with the right format
-                mock_save.assert_called_with(
-                    frame, os.path.join(output_dir, f"frame_0000.{fmt}"), fmt
-                )
+                # We need to adapt this assertion to match the new signature
+                mock_save.assert_called_once()
+                args, _ = mock_save.call_args
+                assert args[0] is frame  # Check frame is the same
+                assert args[1] == os.path.join(
+                    output_dir, f"frame_0000.{fmt}"
+                )  # Check path
+                assert args[2].format == fmt  # Check format in ImageOptions
 
                 # Check that we got the segment
                 assert len(segments) == 1

@@ -1,6 +1,15 @@
 """Models for WWDC Digest."""
 
+from typing import Literal
+
 from pydantic import BaseModel
+
+
+class ImageOptions(BaseModel):
+    """Model representing image extraction options."""
+
+    format: Literal["jpg", "png", "avif", "webp"] = "jpg"
+    width: int | None = None
 
 
 class OpenAIConfig(BaseModel):

@@ -8,14 +8,13 @@ Environment variables:
 import logging
 import os
 import tempfile
-from typing import Literal
 
 from wwdctools.downloader import download_session_content
 from wwdctools.models import WWDCSession
 from wwdctools.session import fetch_session_data
 
 from .factory import DigestComponentFactory
-from .models import OpenAIConfig, WWDCDigest, WWDCFrameSegment
+from .models import ImageOptions, OpenAIConfig, WWDCDigest, WWDCFrameSegment
 
 logger = logging.getLogger("wwdcdigest")
 
@@ -251,7 +250,7 @@ async def _download_and_extract_frames(
     session_data: WWDCSession,
     session_dir: str,
     frames_dir: str,
-    image_format: Literal["jpg", "png", "avif", "webp"] = "jpg",
+    image_options: ImageOptions,
 ) -> tuple[dict[str, str], list[WWDCFrameSegment]]:
     """Download session content and extract frames.
 
@@ -259,7 +258,7 @@ async def _download_and_extract_frames(
         session_data: Session data
         session_dir: Directory for session files
         frames_dir: Directory for extracted frames
-        image_format: Format to save the image files (jpg, png, avif, webp)
+        image_options: Options for image extraction and formatting
 
     Returns:
         Tuple of (download_paths, segments)
@@ -331,7 +330,10 @@ async def _download_and_extract_frames(
     # Extract frames using the VideoProcessor abstraction
     video_processor = DigestComponentFactory.create_video_processor()
     segments = await video_processor.extract_frames(
-        download_paths["video"], download_paths["webvtt"], frames_dir, image_format
+        download_paths["video"],
+        download_paths["webvtt"],
+        frames_dir,
+        image_options,
     )
     logger.info(f"Extracted {len(segments)} frames from video")
 
@@ -429,7 +431,7 @@ async def create_digest_from_url(
     output_dir: str | None = None,
     openai_config: OpenAIConfig | None = None,
     language: str = "en",
-    image_format: Literal["jpg", "png", "avif", "webp"] = "jpg",
+    image_options: ImageOptions | None = None,
 ) -> WWDCDigest:
     """Create a digest from a WWDC session URL.
 
@@ -438,12 +440,16 @@ async def create_digest_from_url(
         output_dir: Directory to save output files (defaults to temp directory)
         openai_config: OpenAI API configuration object
         language: Language code for the digest (defaults to English)
-        image_format: Format to save the extracted frames (defaults to jpg)
+        image_options: Options for image extraction and formatting
 
     Returns:
         A digest of the session
     """
     logger.info(f"Creating digest from URL: {url}")
+
+    # Initialize default ImageOptions if None is provided
+    if image_options is None:
+        image_options = ImageOptions()
 
     # Fetch session data
     session_data = await fetch_session_data(url)
@@ -456,7 +462,7 @@ async def create_digest_from_url(
 
     # Download content and extract frames
     download_paths, segments = await _download_and_extract_frames(
-        session_data, session_dir, frames_dir, image_format
+        session_data, session_dir, frames_dir, image_options
     )
 
     # Generate summary and key points
@@ -506,7 +512,7 @@ async def create_digest(
     output_dir: str | None = None,
     openai_config: OpenAIConfig | None = None,
     language: str = "en",
-    image_format: Literal["jpg", "png", "avif", "webp"] = "jpg",
+    image_options: ImageOptions | None = None,
 ) -> WWDCDigest:
     """Create a digest from a WWDC session URL.
 
@@ -515,7 +521,7 @@ async def create_digest(
         output_dir: Directory to save output files (defaults to temp directory)
         openai_config: OpenAI configuration for API access (optional)
         language: Language code for the digest (defaults to English)
-        image_format: Format to save the extracted frames (defaults to jpg)
+        image_options: Options for image extraction and formatting
 
     Returns:
         A digest of the session
@@ -531,6 +537,10 @@ async def create_digest(
     # Validate and get OpenAI settings
     validated_config = _validate_openai_settings(openai_config, language)
 
+    # Use default ImageOptions if None provided
+    if image_options is None:
+        image_options = ImageOptions()
+
     return await create_digest_from_url(
-        url, output_dir, validated_config, language, image_format
+        url, output_dir, validated_config, language, image_options
     )

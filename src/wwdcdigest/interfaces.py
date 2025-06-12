@@ -1,9 +1,9 @@
 """Interfaces for WWDC Digest components based on SOLID principles."""
 
 import abc
-from typing import Literal, Protocol, runtime_checkable
+from typing import Protocol, runtime_checkable
 
-from .models import OpenAIConfig, WWDCDigest, WWDCFrameSegment
+from .models import ImageOptions, OpenAIConfig, WWDCDigest, WWDCFrameSegment
 
 
 @runtime_checkable
@@ -15,7 +15,7 @@ class VideoProcessor(Protocol):
         video_path: str,
         subtitle_path: str,
         output_dir: str,
-        image_format: Literal["jpg", "png", "avif", "webp"] = "jpg",
+        image_options: ImageOptions,
     ) -> list[WWDCFrameSegment]:
         """Extract frames from a video file.
 
@@ -23,7 +23,7 @@ class VideoProcessor(Protocol):
             video_path: Path to the video file
             subtitle_path: Path to the subtitle file
             output_dir: Directory to save extracted frames
-            image_format: Format for the extracted images
+            image_options: Options for image extraction and formatting
 
         Returns:
             List of WWDCFrameSegment objects

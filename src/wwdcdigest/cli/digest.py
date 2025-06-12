@@ -9,6 +9,7 @@ from typing import Literal, cast
 import click
 
 from wwdcdigest.digest import create_digest
+from wwdcdigest.models import ImageOptions, OpenAIConfig
 
 logger = logging.getLogger("wwdcdigest")
 
@@ -59,6 +60,13 @@ logger = logging.getLogger("wwdcdigest")
     default="jpg",
     help="Format for extracted images (jpg, png, avif, webp)",
 )
+@click.option(
+    "--image-width",
+    "-w",
+    type=int,
+    default=None,
+    help="Width for extracted images in pixels (maintains aspect ratio)",
+)
 def digest_command(  # noqa: PLR0913
     url: str,
     output_dir: str | None,
@@ -67,6 +75,7 @@ def digest_command(  # noqa: PLR0913
     openai_endpoint: str | None,
     language: str,
     image_format: str,
+    image_width: int | None,
 ) -> None:
     """Create a digest from a WWDC session.
 
@@ -81,9 +90,13 @@ def digest_command(  # noqa: PLR0913
         # Create OpenAIConfig object if API key is provided
         openai_config = None
         if openai_key:
-            from wwdcdigest.models import OpenAIConfig
-
             openai_config = OpenAIConfig(api_key=openai_key, endpoint=openai_endpoint)
+
+        # Create ImageOptions object
+        image_options = ImageOptions(
+            format=cast(Literal["jpg", "png", "avif", "webp"], image_format),
+            width=image_width,
+        )
 
         digest = asyncio.run(
             create_digest(
@@ -91,7 +104,7 @@ def digest_command(  # noqa: PLR0913
                 output_dir=output_dir,
                 openai_config=openai_config,
                 language=language,
-                image_format=cast(Literal["jpg", "png", "avif", "webp"], image_format),
+                image_options=image_options,
             )
         )
         logger.info(f"Successfully created digest for session {digest.session_id}")
