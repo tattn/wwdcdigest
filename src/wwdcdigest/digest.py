@@ -189,7 +189,7 @@ async def _organize_downloaded_content(
         "video": os.path.join(session_dir, "hd.mp4"),
         "webvtt": os.path.join(session_dir, "webvtt"),
         "transcript": os.path.join(session_dir, "transcript.txt"),
-        "sample_code": os.path.join(session_dir, "sample_code.txt"),
+        "sample_code": os.path.join(session_dir, "sample_code.md"),
     }
 
     # Process each content type

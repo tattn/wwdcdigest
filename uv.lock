@@ -798,7 +798,7 @@ dev = [
 [[package]]
 name = "wwdctools"
 version = "0.1.0"
-source = { git = "https://github.com/tattn/wwdctools.git#4d918277cea606df313290429a9038a9405c4d30" }
+source = { git = "https://github.com/tattn/wwdctools.git#4c715a75bc8345d1758143cd845dcfb614cefd1b" }
 dependencies = [
     { name = "beautifulsoup4" },
     { name = "click" },
