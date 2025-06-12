@@ -5,6 +5,7 @@ import os
 import re
 
 import webvtt
+from wwdctools import combine_webvtt_files
 
 logger = logging.getLogger("wwdcdigest")
 
@@ -30,6 +31,37 @@ def parse_webvtt_time(time_str: str) -> float:
         minutes, seconds = parts
         return int(minutes) * 60 + float(seconds)
     return float(time_str)
+
+
+def prepare_combined_subtitle(subtitle_path: str, output_dir: str) -> str:
+    """Prepare a combined subtitle file.
+
+    Args:
+        subtitle_path: Path to the subtitle file or directory
+        output_dir: Output directory for the combined subtitle
+
+    Returns:
+        Path to the combined subtitle file
+    """
+    combined_subtitle_path = os.path.join(output_dir, "combined.vtt")
+
+    # If subtitle_path is a single file, use it directly with combine_webvtt_files
+    if os.path.isfile(subtitle_path):
+        combine_webvtt_files([subtitle_path], combined_subtitle_path)
+    else:
+        # If it's a directory, find all WebVTT files and combine them
+        webvtt_files = [
+            os.path.join(subtitle_path, f)
+            for f in os.listdir(subtitle_path)
+            if f.endswith((".webvtt", ".vtt"))
+        ]
+        if webvtt_files:
+            combine_webvtt_files(webvtt_files, combined_subtitle_path)
+        else:
+            # No WebVTT files found, use the subtitle_path directly
+            combined_subtitle_path = subtitle_path
+
+    return combined_subtitle_path
 
 
 def prepare_subtitle_path(subtitle_path: str, output_dir: str) -> str:

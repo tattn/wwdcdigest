@@ -11,8 +11,11 @@ import webvtt
 from PIL import Image
 
 from .models import WWDCFrameSegment
-from .webvtt_combiner import combine_webvtt
-from .webvtt_utils import parse_webvtt_time, prepare_subtitle_path
+from .webvtt_utils import (
+    parse_webvtt_time,
+    prepare_combined_subtitle,
+    prepare_subtitle_path,
+)
 
 logger = logging.getLogger("wwdcdigest")
 
@@ -59,9 +62,7 @@ def extract_frames_from_video(
     subtitle_path = prepare_subtitle_path(subtitle_path, output_dir)
 
     # Process subtitle file to remove duplicates
-    combined_subtitle_path = combine_webvtt(
-        subtitle_path, os.path.join(output_dir, "combined.vtt")
-    )
+    combined_subtitle_path = prepare_combined_subtitle(subtitle_path, output_dir)
 
     # Parse WebVTT file
     try:

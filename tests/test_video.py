@@ -62,9 +62,12 @@ async def test_compare_images():
 async def test_extract_frames_merges_similar_frames():
     """Test that similar consecutive frames are merged."""
     with tempfile.TemporaryDirectory() as temp_dir:
-        # Mock video and subtitle data
-        video_path = "mock_video.mp4"
-        subtitle_path = "mock_subtitle.vtt"
+        # Create a real temporary subtitle file
+        subtitle_path = os.path.join(temp_dir, "subtitle.vtt")
+        with open(subtitle_path, "w", encoding="utf-8") as f:
+            f.write("WEBVTT\n\n")
+
+        video_path = "video.mp4"  # This will be mocked
         output_dir = temp_dir
 
         # Create a mock for cv2.VideoCapture
@@ -114,7 +117,7 @@ async def test_extract_frames_merges_similar_frames():
         # Patch dependencies
         with (
             patch("wwdcdigest.video.cv2.VideoCapture", return_value=mock_video),
-            patch("wwdcdigest.webvtt_combiner.webvtt.read", return_value=mock_vtt),
+            patch("wwdctools.combine_webvtt_files", return_value=None),
             patch("wwdcdigest.video.webvtt.read", return_value=mock_vtt),
             patch("wwdcdigest.video.compare_images") as mock_compare,
             patch("wwdcdigest.video._save_frame_image", side_effect=mock_save_frame),
@@ -288,9 +291,12 @@ async def test_delete_unused_image_files():
 async def test_image_format_options():
     """Test that different image formats are supported."""
     with tempfile.TemporaryDirectory() as temp_dir:
-        # Mock video and subtitle data
-        video_path = "mock_video.mp4"
-        subtitle_path = "mock_subtitle.vtt"
+        # Create a real temporary subtitle file
+        subtitle_path = os.path.join(temp_dir, "subtitle.vtt")
+        with open(subtitle_path, "w", encoding="utf-8") as f:
+            f.write("WEBVTT\n\n")
+
+        video_path = "video.mp4"  # This will be mocked
         output_dir = temp_dir
 
         # Create a test frame
@@ -327,7 +333,7 @@ async def test_image_format_options():
             # Patch dependencies
             with (
                 patch("wwdcdigest.video.cv2.VideoCapture", return_value=mock_video),
-                patch("wwdcdigest.webvtt_combiner.webvtt.read", return_value=mock_vtt),
+                patch("wwdctools.combine_webvtt_files", return_value=None),
                 patch("wwdcdigest.video.webvtt.read", return_value=mock_vtt),
                 patch("wwdcdigest.video.compare_images", return_value=0.5),
                 patch(

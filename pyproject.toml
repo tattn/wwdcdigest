@@ -21,7 +21,6 @@ dependencies = [
     "click>=8.1.0",
     "html5lib>=1.1",
     "opencv-python>=4.9.0",
-    "webvtt-py>=0.4.6",
     "wwdctools @ git+https://github.com/tattn/wwdctools.git",
     "openai>=1.84.0",
     "pillow>=10.0.0",

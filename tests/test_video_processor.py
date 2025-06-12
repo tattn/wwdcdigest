@@ -16,8 +16,12 @@ async def test_default_video_processor():
     processor = DefaultVideoProcessor()
 
     with tempfile.TemporaryDirectory() as temp_dir:
-        video_path = "mock_video.mp4"
-        subtitle_path = "mock_subtitle.vtt"
+        # Create a real temporary subtitle file
+        subtitle_path = os.path.join(temp_dir, "subtitle.vtt")
+        with open(subtitle_path, "w", encoding="utf-8") as f:
+            f.write("WEBVTT\n\n")
+
+        video_path = "video.mp4"  # This will be mocked
 
         # Create test segments
         test_segments = [
