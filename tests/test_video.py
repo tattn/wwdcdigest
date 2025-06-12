@@ -12,12 +12,11 @@ import pytest
 
 from wwdcdigest.video import (
     SIMILARITY_THRESHOLD,
-    _prepare_subtitle_path,
     compare_images,
     delete_unused_image_files,
     extract_frames_from_video,
-    parse_webvtt_time,
 )
+from wwdcdigest.webvtt_utils import parse_webvtt_time, prepare_subtitle_path
 
 
 def test_parse_webvtt_time():
@@ -115,6 +114,7 @@ async def test_extract_frames_merges_similar_frames():
         # Patch dependencies
         with (
             patch("wwdcdigest.video.cv2.VideoCapture", return_value=mock_video),
+            patch("wwdcdigest.webvtt_combiner.webvtt.read", return_value=mock_vtt),
             patch("wwdcdigest.video.webvtt.read", return_value=mock_vtt),
             patch("wwdcdigest.video.compare_images") as mock_compare,
             patch("wwdcdigest.video._save_frame_image", side_effect=mock_save_frame),
@@ -140,7 +140,7 @@ async def test_extract_frames_merges_similar_frames():
 
 
 @pytest.mark.anyio
-async def test_prepare_subtitle_path():
+async def testprepare_subtitle_path():
     """Test preparing subtitle path with multiple files."""
     with tempfile.TemporaryDirectory() as temp_dir:
         # Create a mock subtitle directory with multiple .webvtt files
@@ -159,7 +159,7 @@ async def test_prepare_subtitle_path():
         output_dir = Path(temp_dir) / "output"
         output_dir.mkdir()
 
-        combined_path = _prepare_subtitle_path(str(subtitle_dir), str(output_dir))
+        combined_path = prepare_subtitle_path(str(subtitle_dir), str(output_dir))
 
         # Check that the combined file exists and contains both parts
         assert os.path.exists(combined_path)
@@ -167,6 +167,92 @@ async def test_prepare_subtitle_path():
             content = f.read()
             assert "Part 1" in content
             assert "Part 2" in content
+
+
+@pytest.mark.anyio
+async def testprepare_subtitle_path_deduplicates_captions():
+    """Test that duplicate captions are removed when combining subtitle files."""
+    with tempfile.TemporaryDirectory() as temp_dir:
+        # Create a mock subtitle directory with multiple .webvtt files
+        subtitle_dir = Path(temp_dir) / "subtitles"
+        subtitle_dir.mkdir()
+
+        # Create subtitle files with duplicate content
+        (subtitle_dir / "sequence_1.webvtt").write_text(
+            "WEBVTT\n\n"
+            "00:00:06.904 --> 00:00:10.374 align:center line:79%\n"
+            "Hello, I'm Nicholas,\n"
+            "an engineer on the Accessibility team.\n\n"
+            "00:00:11.074 --> 00:00:13.277 align:center line:79%\n"
+            "Accessibility empowers everyone\n"
+            "to experience\n\n"
+        )
+
+        (subtitle_dir / "sequence_2.webvtt").write_text(
+            "WEBVTT\n\n"
+            "00:00:11.074 --> 00:00:13.277 align:center line:79%\n"
+            "Accessibility empowers everyone\n"
+            "to experience\n\n"
+            "00:00:13.277 --> 00:00:15.379 align:center line:81%\n"
+            "and love the apps that you create.\n\n"
+        )
+
+        (subtitle_dir / "sequence_3.webvtt").write_text(
+            "WEBVTT\n\n"
+            "00:00:16.313 --> 00:00:18.348 align:center line:79%\n"
+            "Today I'm going to go beyond\n"
+            "the basics to explore\n\n"
+            "00:00:16.313 --> 00:00:18.348 align:center line:79%\n"
+            "Today I'm going to go beyond\n"
+            "the basics to explore\n\n"
+            "00:00:18.348 --> 00:00:20.584 align:center line:79%\n"
+            "how you can make your Mac app\n"
+            "more accessible.\n\n"
+        )
+
+        # Test combining subtitles
+        output_dir = Path(temp_dir) / "output"
+        output_dir.mkdir()
+
+        combined_path = prepare_subtitle_path(str(subtitle_dir), str(output_dir))
+
+        # Check that the combined file exists
+        assert os.path.exists(combined_path)
+
+        # Read the combined file
+        with open(combined_path, encoding="utf-8") as f:
+            content = f.read()
+
+        # Count the number of occurrences of each unique caption
+        assert (
+            content.count(
+                "00:00:11.074 --> 00:00:13.277 align:center line:79%\n"
+                "Accessibility empowers everyone\n"
+                "to experience"
+            )
+            == 1
+        )
+
+        assert (
+            content.count(
+                "00:00:16.313 --> 00:00:18.348 align:center line:79%\n"
+                "Today I'm going to go beyond\n"
+                "the basics to explore"
+            )
+            == 1
+        )
+
+        # Check that all expected captions are present exactly once
+        expected_captions = [
+            "Hello, I'm Nicholas,\nan engineer on the Accessibility team.",
+            "Accessibility empowers everyone\nto experience",
+            "and love the apps that you create.",
+            "Today I'm going to go beyond\nthe basics to explore",
+            "how you can make your Mac app\nmore accessible.",
+        ]
+
+        for caption in expected_captions:
+            assert caption in content, f"Caption not found: {caption}"
 
 
 @pytest.mark.anyio
@@ -241,6 +327,7 @@ async def test_image_format_options():
             # Patch dependencies
             with (
                 patch("wwdcdigest.video.cv2.VideoCapture", return_value=mock_video),
+                patch("wwdcdigest.webvtt_combiner.webvtt.read", return_value=mock_vtt),
                 patch("wwdcdigest.video.webvtt.read", return_value=mock_vtt),
                 patch("wwdcdigest.video.compare_images", return_value=0.5),
                 patch(
