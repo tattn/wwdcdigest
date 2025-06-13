@@ -9,7 +9,7 @@ from typing import Literal, cast
 import click
 
 from wwdcdigest.digest import create_digest
-from wwdcdigest.models import ImageOptions, OpenAIConfig
+from wwdcdigest.models import DigestOptions, ImageOptions, OpenAIConfig
 
 logger = logging.getLogger("wwdcdigest")
 
@@ -106,14 +106,19 @@ def digest_command(  # noqa: PLR0913
             width=image_width,
         )
 
+        # Create DigestOptions object
+        digest_options = DigestOptions(
+            output_dir=output_dir,
+            openai_config=openai_config,
+            language=language,
+            image_options=image_options,
+            force_regenerate=force,
+        )
+
         digest = asyncio.run(
             create_digest(
                 url=url,
-                output_dir=output_dir,
-                openai_config=openai_config,
-                language=language,
-                image_options=image_options,
-                force_regenerate=force,
+                options=digest_options,
             )
         )
         logger.info(f"Successfully created digest for session {digest.session.id}")
