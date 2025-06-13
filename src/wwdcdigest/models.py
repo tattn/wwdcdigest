@@ -20,6 +20,16 @@ class OpenAIConfig(BaseModel):
     endpoint: str | None = None
 
 
+class DigestOptions(BaseModel):
+    """Model representing options for digest creation."""
+
+    output_dir: str | None = None
+    openai_config: OpenAIConfig | None = None
+    language: str = "en"
+    image_options: ImageOptions | None = None
+    force_regenerate: bool = False
+
+
 class OpenAIResponse(BaseModel):
     """Model representing OpenAI's response format for session summaries."""
 

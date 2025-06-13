@@ -30,6 +30,20 @@ class VideoProcessor(Protocol):
         """
         ...
 
+    async def load_segments_from_frames(
+        self,
+        frames_dir: str,
+    ) -> list[WWDCFrameSegment]:
+        """Load existing frame segments from a directory.
+
+        Args:
+            frames_dir: Directory containing frame images
+
+        Returns:
+            List of WWDCFrameSegment objects
+        """
+        ...
+
 
 @runtime_checkable
 class ContentSummarizer(Protocol):

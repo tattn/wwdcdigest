@@ -269,3 +269,95 @@ def _save_frame_image(
         # Use OpenCV for jpg and png
         cv2.imwrite(image_path, frame)
         logger.debug(f"Saved frame as {image_options.format.upper()}: {image_path}")
+
+
+def load_segments_from_frames_dir(
+    frames_dir: str,
+) -> list[WWDCFrameSegment]:
+    """Load existing frame segments from a directory.
+
+    Args:
+        frames_dir: Directory containing frame images
+
+    Returns:
+        List of WWDCFrameSegment objects
+    """
+    logger.info(f"Loading existing frames from {frames_dir}")
+    segments = []
+
+    if not os.path.exists(frames_dir) or not os.path.isdir(frames_dir):
+        logger.warning(f"Frames directory does not exist: {frames_dir}")
+        return segments
+
+    # Find all image files in the directory
+    image_extensions = (".jpg", ".jpeg", ".png", ".avif", ".webp")
+    image_files = [
+        f
+        for f in sorted(os.listdir(frames_dir))
+        if f.lower().startswith("frame_") and f.lower().endswith(image_extensions)
+    ]
+
+    if not image_files:
+        logger.warning(f"No frame images found in {frames_dir}")
+        return segments
+
+    # Load metadata file if it exists
+    metadata_path = os.path.join(frames_dir, "metadata.txt")
+    metadata = {}
+
+    if os.path.exists(metadata_path):
+        try:
+            with open(metadata_path, encoding="utf-8") as file:
+                lines = file.readlines()
+                current_frame = None
+                current_text = []
+
+                for line_text in lines:
+                    line_content = line_text.strip()
+                    if line_content.startswith("Frame:"):
+                        # Save previous frame data if exists
+                        if current_frame and current_text:
+                            metadata[current_frame] = "\n".join(current_text)
+                            current_text = []
+
+                        # Start new frame
+                        current_frame = line_content.replace("Frame:", "").strip()
+                    elif current_frame:
+                        current_text.append(line_content)
+
+                # Save last frame
+                if current_frame and current_text:
+                    metadata[current_frame] = "\n".join(current_text)
+        except Exception as e:
+            logger.error(f"Error reading metadata file: {e}")
+
+    # Process each image file
+    for img_file in image_files:
+        try:
+            # Extract frame number from filename (frame_XXXX.ext)
+            frame_number = img_file.split("_")[1].split(".")[0]
+
+            # Full path to the image
+            image_path = os.path.join(frames_dir, img_file)
+
+            # Get text from metadata if available
+            text = metadata.get(
+                frame_number, metadata.get(img_file, f"Frame {frame_number}")
+            )
+
+            # Create timestamp (use frame number as timestamp if not available)
+            frame_num = int(frame_number)
+            timestamp = f"{frame_num // 60:02d}:{frame_num % 60:02d}.000"
+
+            # Create segment
+            segment = WWDCFrameSegment(
+                timestamp=timestamp, text=text, image_path=image_path
+            )
+
+            segments.append(segment)
+
+        except Exception as e:
+            logger.warning(f"Error processing frame file {img_file}: {e}")
+
+    logger.info(f"Loaded {len(segments)} frames from directory")
+    return segments

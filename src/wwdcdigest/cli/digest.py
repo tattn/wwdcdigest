@@ -67,6 +67,13 @@ logger = logging.getLogger("wwdcdigest")
     default=None,
     help="Width for extracted images in pixels (maintains aspect ratio)",
 )
+@click.option(
+    "--force",
+    "-f",
+    is_flag=True,
+    default=False,
+    help="Force regeneration even if digest already exists",
+)
 def digest_command(  # noqa: PLR0913
     url: str,
     output_dir: str | None,
@@ -76,6 +83,7 @@ def digest_command(  # noqa: PLR0913
     language: str,
     image_format: str,
     image_width: int | None,
+    force: bool,
 ) -> None:
     """Create a digest from a WWDC session.
 
@@ -105,6 +113,7 @@ def digest_command(  # noqa: PLR0913
                 openai_config=openai_config,
                 language=language,
                 image_options=image_options,
+                force_regenerate=force,
             )
         )
         logger.info(f"Successfully created digest for session {digest.session.id}")

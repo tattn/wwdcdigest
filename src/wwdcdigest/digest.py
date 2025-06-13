@@ -14,7 +14,13 @@ from wwdctools.models import WWDCSession
 from wwdctools.session import fetch_session_data
 
 from .factory import DigestComponentFactory
-from .models import ImageOptions, OpenAIConfig, WWDCDigest, WWDCFrameSegment
+from .models import (
+    DigestOptions,
+    ImageOptions,
+    OpenAIConfig,
+    WWDCDigest,
+    WWDCFrameSegment,
+)
 
 logger = logging.getLogger("wwdcdigest")
 
@@ -130,8 +136,13 @@ def _setup_output_directory(
     frames_dir = os.path.join(session_dir, "frames")
     os.makedirs(frames_dir, exist_ok=True)
 
-    # The markdown path will be set later using the session title
+    # Check if markdown file already exists in session directory
     markdown_path = ""
+    for file in os.listdir(session_dir):
+        if file.endswith(".md") and not file.startswith("sample_code"):
+            markdown_path = os.path.join(session_dir, file)
+            logger.debug(f"Found existing markdown file: {markdown_path}")
+            break
 
     return output_dir, session_dir, frames_dir, markdown_path
 
@@ -205,15 +216,17 @@ async def _organize_downloaded_content(
 async def _check_existing_content(
     session: WWDCSession,
     session_dir: str,
-) -> dict[str, str]:
+    frames_dir: str,
+) -> tuple[dict[str, str], bool]:
     """Check for existing content files.
 
     Args:
         session: WWDCSession object
         session_dir: Directory for session files
+        frames_dir: Directory for extracted frames
 
     Returns:
-        Dictionary of existing file paths
+        Tuple of (existing file paths, frames exist flag)
     """
     expected_video_path = os.path.join(session_dir, "hd.mp4")
     expected_webvtt_dir = os.path.join(session_dir, "webvtt")
@@ -225,24 +238,33 @@ async def _check_existing_content(
         f.endswith(".webvtt") for f in os.listdir(expected_webvtt_dir)
     )
 
-    if not (video_exists and webvtt_exists):
-        return {}
+    # Check if frames already exist
+    frames_exist = os.path.isdir(frames_dir) and any(os.listdir(frames_dir))
 
-    logger.info(
-        f"Video and WebVTT files already exist for session {session.id}, "
-        "skipping download"
-    )
+    # Prepare result
+    download_paths = {}
 
-    download_paths = {
-        "video": expected_video_path,
-        "webvtt": expected_webvtt_dir,
-    }
+    if video_exists and webvtt_exists:
+        logger.info(
+            f"Video and WebVTT files already exist for session {session.id}, "
+            "skipping download"
+        )
 
-    # Add transcript if it exists
-    if os.path.isfile(expected_transcript_path):
-        download_paths["transcript"] = expected_transcript_path
+        download_paths = {
+            "video": expected_video_path,
+            "webvtt": expected_webvtt_dir,
+        }
 
-    return download_paths
+        # Add transcript if it exists
+        if os.path.isfile(expected_transcript_path):
+            download_paths["transcript"] = expected_transcript_path
+
+    if frames_exist:
+        logger.info(
+            f"Frames already exist for session {session.id}, skipping extraction"
+        )
+
+    return download_paths, frames_exist
 
 
 async def _download_and_extract_frames(
@@ -268,7 +290,9 @@ async def _download_and_extract_frames(
     session_id = session_data.id
 
     # Check for existing content
-    download_paths = await _check_existing_content(session_data, session_dir)
+    download_paths, frames_exist = await _check_existing_content(
+        session_data, session_dir, frames_dir
+    )
 
     if not download_paths:
         # Download content (video, transcript, WebVTT)
@@ -326,15 +350,25 @@ async def _download_and_extract_frames(
         logger.error("Video or WebVTT files not available")
         raise ValueError("Video or WebVTT files not available for this session")
 
-    # Extract frames using the VideoProcessor abstraction
+    # Create the video processor once
     video_processor = DigestComponentFactory.create_video_processor()
-    segments = await video_processor.extract_frames(
-        download_paths["video"],
-        download_paths["webvtt"],
-        frames_dir,
-        image_options,
-    )
-    logger.info(f"Extracted {len(segments)} frames from video")
+
+    # If frames already exist, load segments from frames directory
+    segments = []
+    if frames_exist:
+        logger.info(f"Loading existing frames from {frames_dir}")
+        segments = await video_processor.load_segments_from_frames(frames_dir)
+        logger.info(f"Loaded {len(segments)} frames")
+    else:
+        # Extract frames using the VideoProcessor abstraction
+        logger.info(f"Extracting frames from video to {frames_dir}")
+        segments = await video_processor.extract_frames(
+            download_paths["video"],
+            download_paths["webvtt"],
+            frames_dir,
+            image_options,
+        )
+        logger.info(f"Extracted {len(segments)} frames from video")
 
     return download_paths, segments
 
@@ -427,19 +461,14 @@ async def _translate_content_if_needed(
 
 async def create_digest_from_url(
     url: str,
-    output_dir: str | None = None,
-    openai_config: OpenAIConfig | None = None,
-    language: str = "en",
-    image_options: ImageOptions | None = None,
+    options: DigestOptions,
 ) -> WWDCDigest:
     """Create a digest from a WWDC session URL.
 
     Args:
         url: URL of the WWDC session
-        output_dir: Directory to save output files (defaults to temp directory)
-        openai_config: OpenAI API configuration object
-        language: Language code for the digest (defaults to English)
-        image_options: Options for image extraction and formatting
+        options: Digest creation options including output directory, OpenAI config,
+                language, image options, and regeneration flag
 
     Returns:
         A digest of the session
@@ -447,41 +476,62 @@ async def create_digest_from_url(
     logger.info(f"Creating digest from URL: {url}")
 
     # Initialize default ImageOptions if None is provided
-    if image_options is None:
-        image_options = ImageOptions()
+    if options.image_options is None:
+        options.image_options = ImageOptions()
 
     # Fetch session data
     session_data = await fetch_session_data(url)
 
     # Set up directories
-    _, session_dir, frames_dir, markdown_path = _setup_output_directory(
-        output_dir, session_data
+    _, session_dir, frames_dir, existing_markdown_path = _setup_output_directory(
+        options.output_dir, session_data
     )
+
+    # Create title-based markdown filename
+    title_for_filename = (
+        session_data.title.replace(" ", "_").replace("/", "_").replace("\\", "_")
+    )
+    expected_markdown_path = os.path.join(session_dir, f"{title_for_filename}.md")
+
+    # Check if digest already exists and skip processing if not forced
+    if (
+        existing_markdown_path
+        and os.path.exists(existing_markdown_path)
+        and not options.force_regenerate
+    ):
+        logger.info(
+            f"Digest already exists at {existing_markdown_path}, skipping regeneration"
+        )
+
+        # Create a basic digest object with the session info and markdown path
+        return WWDCDigest(
+            session=session_data,
+            summary="",  # Empty because we're reusing existing digest
+            key_points=[],  # Empty because we're reusing existing digest
+            segments=[],  # Empty because we're reusing existing digest
+            markdown_path=existing_markdown_path,
+            language=options.language,
+            source_url=url,
+        )
 
     # Download content and extract frames
     download_paths, segments = await _download_and_extract_frames(
-        session_data, session_dir, frames_dir, image_options
+        session_data, session_dir, frames_dir, options.image_options
     )
 
     # Generate summary and key points
     summary, key_points = await _generate_summary_and_key_points(
-        openai_config,
+        options.openai_config,
         download_paths,
         segments,
         session_data.title,
-        language,
+        options.language,
     )
 
     # Translate content if needed
     summary, key_points, segments = await _translate_content_if_needed(
-        language, openai_config, segments, summary, key_points
+        options.language, options.openai_config, segments, summary, key_points
     )
-
-    # Create markdown file path with title as filename
-    title_for_filename = (
-        session_data.title.replace(" ", "_").replace("/", "_").replace("\\", "_")
-    )
-    markdown_path = os.path.join(session_dir, f"{title_for_filename}.md")
 
     # Create the digest object
     digest = WWDCDigest(
@@ -489,14 +539,14 @@ async def create_digest_from_url(
         summary=summary,
         key_points=key_points,
         segments=segments,
-        markdown_path=markdown_path,
-        language=language,
+        markdown_path=expected_markdown_path,
+        language=options.language,
         source_url=url,
     )
 
-    # Format the digest using the DigestFormatter abstraction
+    # Format the digest using the DigestComponentFactory abstraction
     formatter = DigestComponentFactory.create_formatter("markdown")
-    markdown_path = formatter.format_digest(digest, markdown_path)
+    markdown_path = formatter.format_digest(digest, expected_markdown_path)
 
     # Update the markdown path in the digest object
     digest.markdown_path = markdown_path
@@ -506,19 +556,14 @@ async def create_digest_from_url(
 
 async def create_digest(
     url: str,
-    output_dir: str | None = None,
-    openai_config: OpenAIConfig | None = None,
-    language: str = "en",
-    image_options: ImageOptions | None = None,
+    options: DigestOptions | None = None,
 ) -> WWDCDigest:
     """Create a digest from a WWDC session URL.
 
     Args:
         url: URL of the WWDC session
-        output_dir: Directory to save output files (defaults to temp directory)
-        openai_config: OpenAI configuration for API access (optional)
-        language: Language code for the digest (defaults to English)
-        image_options: Options for image extraction and formatting
+        options: Digest creation options including output directory, OpenAI config,
+                language, image options, and regeneration flag
 
     Returns:
         A digest of the session
@@ -531,13 +576,13 @@ async def create_digest(
             "URL must start with http:// or https:// and be a valid WWDC session URL"
         )
 
-    # Validate and get OpenAI settings
-    validated_config = _validate_openai_settings(openai_config, language)
+    # Use default options if none provided
+    if options is None:
+        options = DigestOptions()
 
-    # Use default ImageOptions if None provided
-    if image_options is None:
-        image_options = ImageOptions()
-
-    return await create_digest_from_url(
-        url, output_dir, validated_config, language, image_options
+    # Validate and update OpenAI settings
+    options.openai_config = _validate_openai_settings(
+        options.openai_config, options.language
     )
+
+    return await create_digest_from_url(url, options)
