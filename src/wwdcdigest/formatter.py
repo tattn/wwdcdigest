@@ -26,7 +26,7 @@ class MarkdownFormatter:
 
         with open(output_path, "w", encoding="utf-8") as f:
             # Write header
-            f.write(f"# {digest.title}\n\n")
+            f.write(f"# {digest.session.title}\n\n")
 
             # Write source URL if available
             if digest.source_url:

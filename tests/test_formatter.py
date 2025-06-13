@@ -4,6 +4,7 @@ import os
 import tempfile
 
 import pytest
+from wwdctools.models import WWDCSession
 
 from wwdcdigest.formatter import MarkdownFormatter
 from wwdcdigest.models import WWDCDigest, WWDCFrameSegment
@@ -36,9 +37,16 @@ async def test_markdown_formatter():
                 f.write("test image data")
 
         # Create digest
-        digest = WWDCDigest(
-            session_id="12345",
+        session = WWDCSession(
+            id="12345",
             title="Test Session",
+            description="Test description",
+            year=2023,
+            url="https://example.com/test",
+        )
+
+        digest = WWDCDigest(
+            session=session,
             summary="This is a test summary",
             key_points=["Point 1", "Point 2", "Point 3"],
             segments=segments,

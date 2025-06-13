@@ -3,6 +3,7 @@
 from typing import Literal
 
 from pydantic import BaseModel
+from wwdctools.models import WWDCSession
 
 
 class ImageOptions(BaseModel):
@@ -37,8 +38,7 @@ class WWDCFrameSegment(BaseModel):
 class WWDCDigest(BaseModel):
     """Model representing a WWDC session digest."""
 
-    session_id: str
-    title: str
+    session: WWDCSession
     summary: str
     key_points: list[str]
     segments: list[WWDCFrameSegment] = []
@@ -48,4 +48,4 @@ class WWDCDigest(BaseModel):
 
     def __str__(self) -> str:
         """Return a string representation of the digest."""
-        return f"{self.title} ({self.session_id})"
+        return f"{self.session.title} ({self.session.id})"

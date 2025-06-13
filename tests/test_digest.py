@@ -1,6 +1,7 @@
 """Tests for the digest module."""
 
 import pytest
+from wwdctools.models import WWDCSession
 
 from wwdcdigest.digest import create_digest
 from wwdcdigest.models import OpenAIConfig, WWDCDigest
@@ -9,18 +10,26 @@ from wwdcdigest.models import OpenAIConfig, WWDCDigest
 @pytest.mark.anyio
 async def test_wwdc_digest_model():
     """Test the WWDCDigest model."""
+    # Create a test session
+    session = WWDCSession(
+        id="110173",
+        title="Test Session",
+        description="Test description",
+        year=2023,
+        url="https://developer.apple.com/videos/play/wwdc2023/110173/",
+    )
+
     # Create a test digest
     digest = WWDCDigest(
-        session_id="110173",
-        title="Test Session",
+        session=session,
         summary="This is a test summary",
         key_points=["Point 1", "Point 2", "Point 3"],
         source_url="https://developer.apple.com/videos/play/wwdc2023/110173/",
     )
 
     # Check that the model is created correctly
-    assert digest.session_id == "110173"
-    assert digest.title == "Test Session"
+    assert digest.session.id == "110173"
+    assert digest.session.title == "Test Session"
     assert digest.summary == "This is a test summary"
     assert len(digest.key_points) == 3
     assert "Point 1" in digest.key_points
@@ -38,8 +47,8 @@ async def test_create_digest():
     """Test creating a digest from a session URL."""
     url = "https://developer.apple.com/videos/play/wwdc2023/10149/"
     digest = await create_digest(url)
-    assert digest.session_id is not None
-    assert digest.title is not None
+    assert digest.session.id is not None
+    assert digest.session.title is not None
     assert digest.summary is not None
     assert isinstance(digest.key_points, list)
     # Without OpenAI key, key_points should be empty
@@ -55,7 +64,7 @@ async def test_create_digest_with_openai():
     url = "https://developer.apple.com/videos/play/wwdc2023/10149/"
     openai_config = OpenAIConfig(api_key="test_key")
     digest = await create_digest(url, openai_config=openai_config)
-    assert digest.session_id is not None
-    assert digest.title is not None
+    assert digest.session.id is not None
+    assert digest.session.title is not None
     assert digest.summary is not None
     assert len(digest.key_points) > 0

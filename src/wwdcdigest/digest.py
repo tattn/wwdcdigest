@@ -103,14 +103,13 @@ def _validate_openai_settings(
 
 
 def _setup_output_directory(
-    output_dir: str | None, session_id: str, session_year: str
+    output_dir: str | None, session: WWDCSession
 ) -> tuple[str, str, str, str]:
     """Set up output directories.
 
     Args:
         output_dir: Directory to save output files
-        session_id: Session ID
-        session_year: Year of the session
+        session: WWDCSession object
 
     Returns:
         Tuple of (output_dir, session_dir, frames_dir, markdown_path)
@@ -124,7 +123,7 @@ def _setup_output_directory(
     logger.debug(f"Using output directory: {output_dir}")
 
     # Create subdirectory for session in the format wwdc_YEAR_ID
-    session_dir = os.path.join(output_dir, f"wwdc_{session_year}_{session_id}")
+    session_dir = os.path.join(output_dir, f"wwdc_{session.year}_{session.id}")
     os.makedirs(session_dir, exist_ok=True)
 
     # Create frames directory
@@ -204,13 +203,13 @@ async def _organize_downloaded_content(
 
 
 async def _check_existing_content(
-    session_id: str,
+    session: WWDCSession,
     session_dir: str,
 ) -> dict[str, str]:
     """Check for existing content files.
 
     Args:
-        session_id: Session ID
+        session: WWDCSession object
         session_dir: Directory for session files
 
     Returns:
@@ -230,7 +229,7 @@ async def _check_existing_content(
         return {}
 
     logger.info(
-        f"Video and WebVTT files already exist for session {session_id}, "
+        f"Video and WebVTT files already exist for session {session.id}, "
         "skipping download"
     )
 
@@ -269,7 +268,7 @@ async def _download_and_extract_frames(
     session_id = session_data.id
 
     # Check for existing content
-    download_paths = await _check_existing_content(session_id, session_dir)
+    download_paths = await _check_existing_content(session_data, session_dir)
 
     if not download_paths:
         # Download content (video, transcript, WebVTT)
@@ -453,11 +452,10 @@ async def create_digest_from_url(
 
     # Fetch session data
     session_data = await fetch_session_data(url)
-    session_id = session_data.id
 
     # Set up directories
     _, session_dir, frames_dir, markdown_path = _setup_output_directory(
-        output_dir, session_id, str(session_data.year)
+        output_dir, session_data
     )
 
     # Download content and extract frames
@@ -487,8 +485,7 @@ async def create_digest_from_url(
 
     # Create the digest object
     digest = WWDCDigest(
-        session_id=session_id,
-        title=session_data.title,
+        session=session_data,
         summary=summary,
         key_points=key_points,
         segments=segments,

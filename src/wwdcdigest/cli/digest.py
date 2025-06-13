@@ -107,7 +107,7 @@ def digest_command(  # noqa: PLR0913
                 image_options=image_options,
             )
         )
-        logger.info(f"Successfully created digest for session {digest.session_id}")
+        logger.info(f"Successfully created digest for session {digest.session.id}")
 
         # Print output path
         click.echo(f"Digest created: {digest.markdown_path}")
