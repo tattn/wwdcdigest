@@ -3,6 +3,8 @@
 Environment variables:
     OPENAI_API_KEY: API key for OpenAI (required for non-English digests)
     OPENAI_API_ENDPOINT: Custom OpenAI API endpoint URL (optional)
+    CODEX_API_KEY: API key used by Codex CLI in non-interactive mode (optional)
+    ANTHROPIC_API_KEY: API key used by Claude Code in bare mode (optional)
 """
 
 import logging
@@ -15,6 +17,7 @@ from wwdctools.session import fetch_session_data
 
 from .factory import DigestComponentFactory
 from .models import (
+    AIConfig,
     DigestOptions,
     ImageOptions,
     OpenAIConfig,
@@ -106,6 +109,78 @@ def _validate_openai_settings(
 
     # Create and return OpenAIConfig object
     return OpenAIConfig(api_key=api_key, endpoint=endpoint)
+
+
+def _validate_ai_settings(
+    ai_config: AIConfig | None,
+    openai_config: OpenAIConfig | None,
+    language: str,
+) -> AIConfig | None:
+    """Validate and retrieve AI settings.
+
+    Args:
+        ai_config: Generic AI configuration (if provided)
+        openai_config: Legacy OpenAI configuration (if provided)
+        language: Language code for the digest
+
+    Returns:
+        AIConfig object if AI-backed content generation is enabled, None otherwise
+
+    Raises:
+        ValueError: If non-English language is requested but no AI backend is enabled
+    """
+    explicit_ai_config = ai_config is not None
+
+    if ai_config and ai_config.provider == "none":
+        config = None
+    elif ai_config:
+        config = ai_config
+    elif openai_config:
+        config = AIConfig(
+            provider="openai",
+            api_key=openai_config.api_key,
+            endpoint=openai_config.endpoint,
+        )
+    else:
+        openai_settings = _validate_openai_settings(None, "en")
+        if openai_settings:
+            config = AIConfig(
+                provider="openai",
+                api_key=openai_settings.api_key,
+                endpoint=openai_settings.endpoint,
+            )
+        else:
+            config = None
+
+    if config and config.provider == "openai":
+        openai_settings = _validate_openai_settings(
+            OpenAIConfig(api_key=config.api_key or "", endpoint=config.endpoint)
+            if config.api_key
+            else None,
+            language,
+        )
+        if openai_settings:
+            return AIConfig(
+                provider="openai",
+                model=config.model,
+                api_key=openai_settings.api_key,
+                endpoint=openai_settings.endpoint,
+                timeout_seconds=config.timeout_seconds,
+            )
+        if explicit_ai_config:
+            raise ValueError(
+                "OpenAI API key is required when using --ai openai. "
+                "Provide --openai-key or set OPENAI_API_KEY."
+            )
+        return None
+
+    if language != "en" and not config:
+        raise ValueError(
+            "AI backend is required for non-English languages. "
+            "Use --ai openai, --ai codex, --ai claude, or set OPENAI_API_KEY."
+        )
+
+    return config
 
 
 def _setup_output_directory(
@@ -374,16 +449,16 @@ async def _download_and_extract_frames(
 
 
 async def _generate_summary_and_key_points(
-    config: OpenAIConfig | None,
+    config: AIConfig | None,
     download_paths: dict[str, str],
     segments: list[WWDCFrameSegment],
     session_title: str,
     language: str = "en",
 ) -> tuple[str, list[str]]:
-    """Generate summary and key points using OpenAI.
+    """Generate summary and key points using the configured AI backend.
 
     Args:
-        config: OpenAI API configuration
+        config: AI configuration
         download_paths: Dictionary of downloaded file paths
         segments: List of WWDCFrameSegment objects
         session_title: Session title
@@ -396,7 +471,7 @@ async def _generate_summary_and_key_points(
     summary = f"Summary of {session_title}"
     key_points = []
 
-    # Generate summary and key points if OpenAI API key is provided
+    # Generate summary and key points if an AI backend is configured
     if config:
         transcript_text = await _get_transcript_from_session(download_paths, segments)
 
@@ -404,26 +479,23 @@ async def _generate_summary_and_key_points(
             logger.warning("No transcript available for summary generation")
             return summary, key_points
 
-        # If we reach here, we need to generate summary with OpenAI
-        logger.info("Generating summary and key points with OpenAI")
+        logger.info("Generating summary and key points with %s", config.provider)
         try:
             summarizer = DigestComponentFactory.create_summarizer(config)
             summary, key_points = await summarizer.generate_summary(
                 transcript_text, session_title, language
             )
         except Exception as e:
-            logger.error(f"Error generating summary with OpenAI: {e}")
+            logger.error(f"Error generating summary with AI backend: {e}")
     else:
-        logger.info(
-            "No OpenAI API key provided, skipping summary and key points generation"
-        )
+        logger.info("No AI backend configured, skipping summary and key points")
 
     return summary, key_points
 
 
 async def _translate_content_if_needed(
     language: str,
-    config: OpenAIConfig | None,
+    config: AIConfig | None,
     segments: list[WWDCFrameSegment],
     summary: str,
     key_points: list[str],
@@ -432,7 +504,7 @@ async def _translate_content_if_needed(
 
     Args:
         language: Language code for the output
-        config: OpenAI API configuration
+        config: AI configuration
         segments: List of WWDCFrameSegment objects
         summary: Summary text
         key_points: List of key points
@@ -444,8 +516,7 @@ async def _translate_content_if_needed(
     if language == "en" or not config:
         return summary, key_points, segments
 
-    # Translate content using OpenAI
-    logger.info(f"Translating content to {language}")
+    logger.info("Translating content to %s", language)
     try:
         translator = DigestComponentFactory.create_translator(config)
         (
@@ -521,7 +592,7 @@ async def create_digest_from_url(
 
     # Generate summary and key points
     summary, key_points = await _generate_summary_and_key_points(
-        options.openai_config,
+        options.ai_config,
         download_paths,
         segments,
         session_data.title,
@@ -530,7 +601,7 @@ async def create_digest_from_url(
 
     # Translate content if needed
     summary, key_points, segments = await _translate_content_if_needed(
-        options.language, options.openai_config, segments, summary, key_points
+        options.language, options.ai_config, segments, summary, key_points
     )
 
     # Create the digest object
@@ -580,9 +651,14 @@ async def create_digest(
     if options is None:
         options = DigestOptions()
 
-    # Validate and update OpenAI settings
-    options.openai_config = _validate_openai_settings(
-        options.openai_config, options.language
+    # Validate and update AI settings
+    options.ai_config = _validate_ai_settings(
+        options.ai_config, options.openai_config, options.language
     )
+    if options.ai_config and options.ai_config.provider == "openai":
+        options.openai_config = OpenAIConfig(
+            api_key=options.ai_config.api_key or "",
+            endpoint=options.ai_config.endpoint,
+        )
 
     return await create_digest_from_url(url, options)

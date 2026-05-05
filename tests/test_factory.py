@@ -4,9 +4,13 @@ import pytest
 
 from wwdcdigest.factory import DigestComponentFactory
 from wwdcdigest.formatter import MarkdownFormatter
-from wwdcdigest.models import OpenAIConfig
-from wwdcdigest.summarizer import DefaultSummarizer, OpenAIContentSummarizer
-from wwdcdigest.translator import OpenAIContentTranslator
+from wwdcdigest.models import AIConfig, OpenAIConfig
+from wwdcdigest.summarizer import (
+    DefaultSummarizer,
+    ExternalAIContentSummarizer,
+    OpenAIContentSummarizer,
+)
+from wwdcdigest.translator import ExternalAIContentTranslator, OpenAIContentTranslator
 from wwdcdigest.video_processor import DefaultVideoProcessor
 
 
@@ -29,11 +33,25 @@ def test_create_summarizer_openai():
     assert isinstance(summarizer, OpenAIContentSummarizer)
 
 
+def test_create_summarizer_codex():
+    """Test creating a Codex CLI summarizer."""
+    config = AIConfig(provider="codex")
+    summarizer = DigestComponentFactory.create_summarizer(config)
+    assert isinstance(summarizer, ExternalAIContentSummarizer)
+
+
 def test_create_translator():
     """Test creating a translator."""
     config = OpenAIConfig(api_key="test-key")
     translator = DigestComponentFactory.create_translator(config)
     assert isinstance(translator, OpenAIContentTranslator)
+
+
+def test_create_translator_claude():
+    """Test creating a Claude Code CLI translator."""
+    config = AIConfig(provider="claude")
+    translator = DigestComponentFactory.create_translator(config)
+    assert isinstance(translator, ExternalAIContentTranslator)
 
 
 def test_create_formatter_markdown():

@@ -9,7 +9,9 @@ from typing import Literal, cast
 import click
 
 from wwdcdigest.digest import create_digest
-from wwdcdigest.models import DigestOptions, ImageOptions, OpenAIConfig
+from wwdcdigest.models import AIConfig, DigestOptions, ImageOptions, OpenAIConfig
+
+AIProvider = Literal["none", "openai", "codex", "claude", "command"]
 
 logger = logging.getLogger("wwdcdigest")
 
@@ -31,6 +33,36 @@ logger = logging.getLogger("wwdcdigest")
     help="Output format (currently only markdown is supported)",
 )
 @click.option(
+    "--ai",
+    "ai_provider",
+    type=click.Choice(["none", "openai", "codex", "claude", "command"]),
+    default=None,
+    help=(
+        "AI backend for summary/translation. "
+        "Use codex or claude to call the installed CLI."
+    ),
+)
+@click.option(
+    "--ai-model",
+    type=str,
+    help="Model name passed to the selected AI backend (optional)",
+)
+@click.option(
+    "--ai-command",
+    type=str,
+    help=(
+        "Custom AI command for --ai command. Use {prompt} as a placeholder, "
+        "or the prompt is appended as the final argument."
+    ),
+)
+@click.option(
+    "--ai-timeout",
+    type=int,
+    default=300,
+    show_default=True,
+    help="Timeout in seconds for external AI CLI calls",
+)
+@click.option(
     "--openai-key",
     type=str,
     help="OpenAI API key to generate summary and key points (optional)",
@@ -50,7 +82,7 @@ logger = logging.getLogger("wwdcdigest")
     default="en",
     help=(
         "Language code for the digest (e.g., 'en', 'ja', 'zh', 'fr'). "
-        "Non-English requires OpenAI."
+        "Non-English requires an AI backend."
     ),
 )
 @click.option(
@@ -69,7 +101,7 @@ logger = logging.getLogger("wwdcdigest")
 )
 @click.option(
     "--force",
-    "-f",
+    "-F",
     is_flag=True,
     default=False,
     help="Force regeneration even if digest already exists",
@@ -78,6 +110,10 @@ def digest_command(  # noqa: PLR0913
     url: str,
     output_dir: str | None,
     output_format: str,
+    ai_provider: AIProvider | None,
+    ai_model: str | None,
+    ai_command: str | None,
+    ai_timeout: int,
     openai_key: str | None,
     openai_endpoint: str | None,
     language: str,
@@ -95,10 +131,28 @@ def digest_command(  # noqa: PLR0913
         if output_format != "markdown":
             raise ValueError("Currently, only 'markdown' format is supported.")
 
-        # Create OpenAIConfig object if API key is provided
+        # Create AIConfig/OpenAIConfig objects if AI options are provided.
+        ai_config = None
         openai_config = None
         if openai_key:
             openai_config = OpenAIConfig(api_key=openai_key, endpoint=openai_endpoint)
+        if ai_provider:
+            ai_config = AIConfig(
+                provider=ai_provider,
+                model=ai_model,
+                api_key=openai_key,
+                endpoint=openai_endpoint,
+                command=ai_command,
+                timeout_seconds=ai_timeout,
+            )
+        elif openai_key:
+            ai_config = AIConfig(
+                provider="openai",
+                model=ai_model,
+                api_key=openai_key,
+                endpoint=openai_endpoint,
+                timeout_seconds=ai_timeout,
+            )
 
         # Create ImageOptions object
         image_options = ImageOptions(
@@ -110,6 +164,7 @@ def digest_command(  # noqa: PLR0913
         digest_options = DigestOptions(
             output_dir=output_dir,
             openai_config=openai_config,
+            ai_config=ai_config,
             language=language,
             image_options=image_options,
             force_regenerate=force,

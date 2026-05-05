@@ -20,11 +20,23 @@ class OpenAIConfig(BaseModel):
     endpoint: str | None = None
 
 
+class AIConfig(BaseModel):
+    """Model representing AI content generation configuration."""
+
+    provider: Literal["none", "openai", "codex", "claude", "command"] = "none"
+    model: str | None = None
+    api_key: str | None = None
+    endpoint: str | None = None
+    command: str | None = None
+    timeout_seconds: int = 300
+
+
 class DigestOptions(BaseModel):
     """Model representing options for digest creation."""
 
     output_dir: str | None = None
     openai_config: OpenAIConfig | None = None
+    ai_config: AIConfig | None = None
     language: str = "en"
     image_options: ImageOptions | None = None
     force_regenerate: bool = False

@@ -3,7 +3,7 @@
 import abc
 from typing import Protocol, runtime_checkable
 
-from .models import ImageOptions, OpenAIConfig, WWDCDigest, WWDCFrameSegment
+from .models import AIConfig, ImageOptions, OpenAIConfig, WWDCDigest, WWDCFrameSegment
 
 
 @runtime_checkable
@@ -171,4 +171,41 @@ class OpenAITranslator(abc.ABC):
         Returns:
             Tuple of (translated_summary, translated_key_points, translated_segments)
         """
+        pass
+
+
+class ExternalAISummarizer(abc.ABC):
+    """Abstract base class for external AI CLI-based summarizers."""
+
+    def __init__(self, config: AIConfig) -> None:
+        """Initialize the summarizer with external AI config."""
+        self.config = config
+
+    @abc.abstractmethod
+    async def generate_summary(
+        self,
+        transcript: str,
+        session_title: str,
+        language: str = "en",
+    ) -> tuple[str, list[str]]:
+        """Generate a summary and key points from a transcript."""
+        pass
+
+
+class ExternalAITranslator(abc.ABC):
+    """Abstract base class for external AI CLI-based translators."""
+
+    def __init__(self, config: AIConfig) -> None:
+        """Initialize the translator with external AI config."""
+        self.config = config
+
+    @abc.abstractmethod
+    async def translate(
+        self,
+        summary: str,
+        key_points: list[str],
+        segments: list[WWDCFrameSegment],
+        target_language: str,
+    ) -> tuple[str, list[str], list[WWDCFrameSegment]]:
+        """Translate digest content to the target language."""
         pass

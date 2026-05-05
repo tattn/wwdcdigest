@@ -10,9 +10,13 @@ from .interfaces import (
     DigestFormatter,
     VideoProcessor,
 )
-from .models import OpenAIConfig
-from .summarizer import DefaultSummarizer, OpenAIContentSummarizer
-from .translator import OpenAIContentTranslator
+from .models import AIConfig, OpenAIConfig
+from .summarizer import (
+    DefaultSummarizer,
+    ExternalAIContentSummarizer,
+    OpenAIContentSummarizer,
+)
+from .translator import ExternalAIContentTranslator, OpenAIContentTranslator
 from .video_processor import DefaultVideoProcessor
 
 logger = logging.getLogger("wwdcdigest")
@@ -32,33 +36,48 @@ class DigestComponentFactory:
 
     @staticmethod
     def create_summarizer(
-        openai_config: OpenAIConfig | None = None,
+        ai_config: AIConfig | OpenAIConfig | None = None,
     ) -> ContentSummarizer:
         """Create a content summarizer implementation.
 
         Args:
-            openai_config: OpenAI API configuration (if None, uses DefaultSummarizer)
+            ai_config: AI configuration (if None, uses DefaultSummarizer)
 
         Returns:
             Implementation of ContentSummarizer
         """
-        if openai_config:
-            return OpenAIContentSummarizer(openai_config)
+        if isinstance(ai_config, OpenAIConfig):
+            return OpenAIContentSummarizer(ai_config)
+        if isinstance(ai_config, AIConfig):
+            if ai_config.provider == "openai" and ai_config.api_key:
+                return OpenAIContentSummarizer(
+                    OpenAIConfig(api_key=ai_config.api_key, endpoint=ai_config.endpoint)
+                )
+            if ai_config.provider in {"codex", "claude", "command"}:
+                return ExternalAIContentSummarizer(ai_config)
         return DefaultSummarizer()
 
     @staticmethod
     def create_translator(
-        openai_config: OpenAIConfig,
+        ai_config: AIConfig | OpenAIConfig,
     ) -> ContentTranslator:
         """Create a content translator implementation.
 
         Args:
-            openai_config: OpenAI API configuration
+            ai_config: AI configuration
 
         Returns:
             Implementation of ContentTranslator
         """
-        return OpenAIContentTranslator(openai_config)
+        if isinstance(ai_config, OpenAIConfig):
+            return OpenAIContentTranslator(ai_config)
+        if ai_config.provider == "openai" and ai_config.api_key:
+            return OpenAIContentTranslator(
+                OpenAIConfig(api_key=ai_config.api_key, endpoint=ai_config.endpoint)
+            )
+        if ai_config.provider in {"codex", "claude", "command"}:
+            return ExternalAIContentTranslator(ai_config)
+        raise ValueError(f"Unsupported translator provider: {ai_config.provider}")
 
     @staticmethod
     def create_formatter(

@@ -5,8 +5,8 @@ from unittest.mock import patch
 
 import pytest
 
-from wwdcdigest.digest import _validate_openai_settings
-from wwdcdigest.models import OpenAIConfig
+from wwdcdigest.digest import _validate_ai_settings, _validate_openai_settings
+from wwdcdigest.models import AIConfig, OpenAIConfig
 
 
 def test_validate_openai_settings_with_params():
@@ -50,3 +50,17 @@ def test_validate_openai_settings_english_no_key():
     """Test that None is returned for English with no API key."""
     config = _validate_openai_settings(None, "en")
     assert config is None
+
+
+def test_validate_ai_settings_codex_non_english():
+    """Test that external AI providers can be used for non-English digests."""
+    config = _validate_ai_settings(AIConfig(provider="codex"), None, "ja")
+    assert isinstance(config, AIConfig)
+    assert config.provider == "codex"
+
+
+@patch.dict(os.environ, {}, clear=True)
+def test_validate_ai_settings_openai_without_key():
+    """Test explicit OpenAI AI backend requires an API key."""
+    with pytest.raises(ValueError, match="OpenAI API key is required"):
+        _validate_ai_settings(AIConfig(provider="openai"), None, "en")

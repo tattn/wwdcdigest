@@ -11,8 +11,9 @@ WWDCDigest is a Python package that provides tools for creating summaries and di
 - Download video and WebVTT subtitles from WWDC sessions
 - Extract video frames at each subtitle timestamp
 - Create markdown digests with transcript text and corresponding video frames
-- Generate summaries and key points with OpenAI API (optional)
-- Translate digests to different languages (with OpenAI)
+- Generate summaries and key points with OpenAI, Codex CLI, or Claude Code
+  (optional)
+- Translate digests to different languages with a configured AI backend
 
 ## Installation
 
@@ -35,10 +36,16 @@ wwdcdigest digest https://developer.apple.com/jp/videos/play/wwdc2025/102/
 wwdcdigest digest https://developer.apple.com/videos/play/wwdc2023/10149/ --output-dir ~/Documents/wwdc_digests
 
 # Use OpenAI to generate summary and key points
-wwdcdigest digest https://developer.apple.com/videos/play/wwdc2023/10149/ --openai-key YOUR_API_KEY
+wwdcdigest digest https://developer.apple.com/videos/play/wwdc2023/10149/ --ai openai --openai-key YOUR_API_KEY
 
-# Create digest in a different language (requires OpenAI)
-wwdcdigest digest https://developer.apple.com/videos/play/wwdc2023/10149/ --language ja --openai-key YOUR_API_KEY
+# Use Codex CLI to generate summary and key points
+wwdcdigest digest https://developer.apple.com/videos/play/wwdc2023/10149/ --ai codex
+
+# Use Claude Code to generate summary and key points
+wwdcdigest digest https://developer.apple.com/videos/play/wwdc2023/10149/ --ai claude
+
+# Create digest in a different language (requires an AI backend)
+wwdcdigest digest https://developer.apple.com/videos/play/wwdc2023/10149/ --language ja --ai codex
 ```
 
 #### Digest Command Options
@@ -48,8 +55,13 @@ The `digest` command provides the following options:
 - `URL`: (Required) URL of the WWDC session
 - `--output-dir`, `-o`: Output directory for generated files. Creates a session subdirectory inside this path.
 - `--format`, `-f`: Output format (currently only markdown is supported).
-- `--openai-key`: OpenAI API key for generating summary and key points. If not provided, basic digest without AI-generated content will be created.
-- `--language`, `-l`: Language code for the digest (e.g., 'en', 'ja', 'zh', 'fr'). Non-English languages require an OpenAI API key.
+- `--ai`: AI backend for summaries and translation: `none`, `openai`, `codex`, `claude`, or `command`.
+- `--ai-model`: Model name passed to the selected AI backend.
+- `--ai-command`: Custom command used with `--ai command`. Use `{prompt}` as a placeholder, or the prompt is appended as the final argument.
+- `--ai-timeout`: Timeout in seconds for external AI CLI calls.
+- `--openai-key`: OpenAI API key for `--ai openai`. If `--ai` is omitted, this keeps the previous behavior and enables OpenAI.
+- `--openai-endpoint`: Custom OpenAI-compatible endpoint URL.
+- `--language`, `-l`: Language code for the digest (e.g., 'en', 'ja', 'zh', 'fr'). Non-English languages require an AI backend.
 
 #### Global CLI Options
 

@@ -2,7 +2,8 @@
 
 import logging
 
-from .interfaces import OpenAITranslator
+from .cli_ai import complete_text_with_cli
+from .interfaces import ExternalAITranslator, OpenAITranslator
 from .models import WWDCFrameSegment
 from .openai_utils import translate_text
 
@@ -46,5 +47,42 @@ class OpenAIContentTranslator(OpenAITranslator):
             segment.text = await translate_text(
                 segment.text, target_language, self.config
             )
+
+        return translated_summary, translated_key_points, segments
+
+
+class ExternalAIContentTranslator(ExternalAITranslator):
+    """Implementation of ContentTranslator using an external AI CLI."""
+
+    async def _translate_text(self, text: str, target_language: str) -> str:
+        prompt = (
+            f"Translate the following text into {target_language}. "
+            "Preserve technical accuracy and terminology. "
+            "Return only the translated text.\n\n"
+            f"{text}"
+        )
+        return await complete_text_with_cli(prompt, self.config)
+
+    async def translate(
+        self,
+        summary: str,
+        key_points: list[str],
+        segments: list[WWDCFrameSegment],
+        target_language: str,
+    ) -> tuple[str, list[str], list[WWDCFrameSegment]]:
+        """Translate digest content to the target language using an external AI CLI."""
+        logger.info(
+            "Translating content to %s using %s",
+            target_language,
+            self.config.provider,
+        )
+
+        translated_summary = await self._translate_text(summary, target_language)
+        translated_key_points = [
+            await self._translate_text(point, target_language) for point in key_points
+        ]
+
+        for segment in segments:
+            segment.text = await self._translate_text(segment.text, target_language)
 
         return translated_summary, translated_key_points, segments
